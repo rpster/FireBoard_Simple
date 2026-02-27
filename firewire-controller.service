@@ -1,0 +1,28 @@
+[Unit]
+Description=Firewire DV Capture Controller
+After=multi-user.target
+Wants=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/firewire-controller/controller.py
+WorkingDirectory=/opt/firewire-controller
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+# Run as root for I2C / mount / format access
+User=root
+Group=root
+# Environment
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/firewire-controller
+# Hardening
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/mnt/dvmedia /var/log /run /dev
+DeviceAllow=/dev/i2c-1 rw
+DeviceAllow=block-sd rw
+
+[Install]
+WantedBy=multi-user.target
