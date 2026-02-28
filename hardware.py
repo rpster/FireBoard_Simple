@@ -105,7 +105,7 @@ class UserControlBoard:
         return bool(val & 0x01)
 
     def set_led(self, mode: int):
-        """Set LED mode: LED_OFF, LED_ON, LED_PULSE, LED_BLINK."""
+        """Set LED mode: LED_OFF, LED_ON, LED_PULSE, LED_BLINK, LED_DOUBLE_PULSE."""
         self._write_reg(config.UCB_REG_LED, mode)
         log.debug("LED set to 0x%02X", mode)
 

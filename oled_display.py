@@ -177,13 +177,11 @@ class OledDisplay:
         draw.text((0, 18), msg[:21], fill=1, font=self._font)
         self._show(img)
 
-    def show_no_storage(self):
+    def show_no_card(self):
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 0), "No microSD found", fill=1, font=self._font)
-        draw.text((0, 12), "Insert card &", fill=1, font=self._font)
-        draw.text((0, 23), "reboot", fill=1, font=self._font)
+        draw.text((0, 8), "No Card", fill=1, font=self._font_large)
         self._show(img)
 
     def show_startup(self):

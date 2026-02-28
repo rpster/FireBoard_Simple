@@ -92,8 +92,8 @@ class FirewireController:
         self.storage_info = detect_external_sd()
         if self.storage_info is None:
             log.warning("No external microSD detected")
-            self.oled.show_no_storage()
-            self.ucb.set_led(config.LED_OFF)
+            self.oled.show_no_card()
+            self.ucb.set_led(config.LED_DOUBLE_PULSE)
             self._state = State.NO_STORAGE
             # Keep polling until storage appears or we're stopped
             while self._running and self.storage_info is None:
