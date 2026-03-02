@@ -43,6 +43,7 @@ class State:
     CAM_OFF_RECORDING = "cam_off_recording"
     FORMAT_CONFIRM = "format_confirm"
     FORMATTING = "formatting"
+    NO_CAMERA = "no_camera"
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +65,7 @@ class FirewireController:
 
         # Format-mode tracking
         self._format_hold_start: float | None = None
+        self._no_camera_time: float | None = None
 
         # Signal handlers
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -175,17 +177,23 @@ class FirewireController:
                 State.FORMAT_CONFIRM: self._tick_format_confirm,
                 State.FORMATTING: self._tick_formatting,
                 State.NO_STORAGE: self._tick_no_storage,
+                State.NO_CAMERA: self._tick_no_camera,
             }.get(self._state)
 
             if handler:
                 handler(btn)
 
-            # 4. Make sure dvgrab is still running (restart if crashed)
+            # 4. Make sure dvgrab is still running (no camera → retry)
             if self.dvgrab and not self.dvgrab.running and self._state not in (
-                State.FORMAT_CONFIRM, State.FORMATTING, State.NO_STORAGE, State.STARTUP
+                State.FORMAT_CONFIRM, State.FORMATTING, State.NO_STORAGE,
+                State.STARTUP, State.NO_CAMERA,
             ):
-                log.warning("dvgrab process died – restarting")
-                self._enter_mode(self._camera_controlled)
+                log.warning("dvgrab process died – no camera detected")
+                self.dvgrab.stop()
+                self.oled.show_no_camera()
+                self.ucb.set_led(config.LED_DOUBLE_PULSE)
+                self._state = State.NO_CAMERA
+                self._no_camera_time = time.monotonic()
 
             self._tick_sleep(tick_start)
 
@@ -339,6 +347,12 @@ class FirewireController:
 
     def _tick_no_storage(self, btn: dict):
         pass
+
+    def _tick_no_camera(self, btn: dict):
+        elapsed = time.monotonic() - self._no_camera_time
+        if elapsed >= config.CAMERA_RETRY_DELAY:
+            log.info("Retrying camera connection")
+            self._enter_mode(self._camera_controlled)
 
     # ------------------------------------------------------------------
     # Shutdown
