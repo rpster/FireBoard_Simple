@@ -172,6 +172,16 @@ class OledDisplay:
         draw.text((0, 8), "Format cancelled", fill=1, font=self._font)
         self._show(img)
 
+    def show_saving(self, clip_duration: str = ""):
+        """Saving / flushing to disk warning screen."""
+        if not self._available:
+            return
+        img, draw = self._new_canvas()
+        draw.text((0, 0), "SAVING...", fill=1, font=self._font_large)
+        if clip_duration:
+            draw.text((0, 20), f"Clip: {clip_duration}", fill=1, font=self._font)
+        self._show(img)
+
     def show_error(self, msg: str):
         if not self._available:
             return

@@ -8,6 +8,7 @@ Runs as a systemd service after boot.
 import logging
 import os
 import signal
+import subprocess
 import sys
 import time
 
@@ -44,6 +45,7 @@ class State:
     FORMAT_CONFIRM = "format_confirm"
     FORMATTING = "formatting"
     NO_CAMERA = "no_camera"
+    SAVING = "saving"
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +70,10 @@ class FirewireController:
         self._no_camera_time: float | None = None
         self._mode_entered_time: float = 0.0
         self._last_storage_check: float = 0.0
+
+        # Saving state tracking
+        self._sync_proc: subprocess.Popen | None = None
+        self._saving_clip_str: str = ""
 
         # Signal handlers
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -189,6 +195,7 @@ class FirewireController:
                 State.FORMATTING: self._tick_formatting,
                 State.NO_STORAGE: self._tick_no_storage,
                 State.NO_CAMERA: self._tick_no_camera,
+                State.SAVING: self._tick_saving,
             }.get(self._state)
 
             if handler:
@@ -219,7 +226,7 @@ class FirewireController:
                 not self.dvgrab.running or self.dvgrab.camera_disconnected or fw_device_missing
             ) and self._state not in (
                 State.FORMAT_CONFIRM, State.FORMATTING, State.NO_STORAGE,
-                State.STARTUP, State.NO_CAMERA,
+                State.STARTUP, State.NO_CAMERA, State.SAVING,
             ):
                 if fw_device_missing:
                     log.warning("FireWire device %s missing – no camera detected", config.FW_DEVICE_PATH)
@@ -269,10 +276,8 @@ class FirewireController:
         if "capture_stopped" in events:
             dur = self.dvgrab.get_last_clip_duration()
             self._prev_clip_str = DvgrabManager.format_duration(dur)
-            self.ucb.set_led(config.LED_PULSE)
-            self.oled.show_waiting(self._prev_clip_str)
-            self._state = State.CAM_ON_WAITING
             log.info("Recording stopped (camera-controlled) duration=%s", self._prev_clip_str)
+            self._enter_saving()
             return
 
         # Update runtime display
@@ -311,15 +316,41 @@ class FirewireController:
             dur = self.dvgrab.get_recording_runtime()
             self.dvgrab.is_recording = False
             self._prev_clip_str = DvgrabManager.format_duration(dur)
-            self.ucb.set_led(config.LED_OFF)
-            self.oled.show_waiting(self._prev_clip_str)
-            self._state = State.CAM_OFF_READY
             log.info("Recording stopped (manual) duration=%s", self._prev_clip_str)
+            self._enter_saving()
             return
 
         # Update runtime display
         rt = self.dvgrab.get_recording_runtime()
         self.oled.show_recording(DvgrabManager.format_duration(rt))
+
+    # --- Saving (sync flush) ---
+    def _enter_saving(self):
+        """Enter the SAVING state: flush writes to external drive."""
+        log.info("Syncing data to external drive")
+        self._saving_clip_str = self._prev_clip_str
+        self.ucb.set_led(config.LED_FAST_BLINK)
+        self.oled.show_saving(self._saving_clip_str)
+        mount = self.storage_info["mount_point"] if self.storage_info else "/"
+        self._sync_proc = subprocess.Popen(
+            ["sync", "-f", mount],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self._state = State.SAVING
+
+    def _tick_saving(self, btn: dict):
+        if self._sync_proc and self._sync_proc.poll() is not None:
+            log.info("Sync complete")
+            self._sync_proc = None
+            if self._camera_controlled:
+                self.ucb.set_led(config.LED_PULSE)
+                self.oled.show_waiting(self._prev_clip_str)
+                self._state = State.CAM_ON_WAITING
+            else:
+                self.ucb.set_led(config.LED_OFF)
+                self.oled.show_waiting(self._prev_clip_str)
+                self._state = State.CAM_OFF_READY
 
     # --- Format mode ---
     def _enter_format_mode(self):
