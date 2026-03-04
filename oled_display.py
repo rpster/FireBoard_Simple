@@ -49,6 +49,9 @@ class OledDisplay:
         self._scroll_text = None
         self._scroll_pause_until = 0.0
         self._scroll_last_time = 0.0
+        # Loading dots animation state
+        self._loading_dots = 0
+        self._loading_last_time = 0.0
         self._detect()
 
     # ------------------------------------------------------------------
@@ -210,9 +213,8 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 0), "FORMAT microSD?", fill=1, font=self._font)
-        draw.text((0, 11), f"Formatting in {seconds}s", fill=1, font=self._font)
-        draw.text((0, 22), "Release = CANCEL", fill=1, font=self._font)
+        draw.text((0, 0), f"Formatting in {seconds}s", fill=1, font=self._font)
+        draw.text((0, 16), "Release to CANCEL", fill=1, font=self._font)
         self._show(img)
 
     def show_formatting(self):
@@ -271,7 +273,11 @@ class OledDisplay:
     def show_startup(self):
         if not self._available:
             return
+        now = time.monotonic()
+        if now - self._loading_last_time >= 0.3:
+            self._loading_last_time = now
+            self._loading_dots = (self._loading_dots + 1) % 6
         img, draw = self._new_canvas()
         draw.text((0, 0), "1394Pi", fill=1, font=self._font_startup_title)
-        self._draw_scrolling_line(draw, 21, "Loading...", self._font_startup_sub, force_scroll=True)
+        draw.text((0, 21), "Loading" + "." * self._loading_dots, fill=1, font=self._font_startup_sub)
         self._show(img)
