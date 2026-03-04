@@ -67,6 +67,7 @@ class FirewireController:
 
         # Format-mode tracking
         self._no_camera_time: float | None = None
+        self._format_awaiting_release = False
         self._mode_entered_time: float = 0.0
         self._last_storage_check: float = 0.0
 
@@ -360,22 +361,26 @@ class FirewireController:
     def _enter_format_mode(self):
         log.info("Entering format confirmation mode")
         self._state = State.FORMAT_CONFIRM
-        self._format_hold_start = time.monotonic()
+        self._format_awaiting_release = True
         self.ucb.set_led(config.LED_BLINK)
-        self.oled.show_format_countdown(int(config.FORMAT_CONFIRM_HOLD) + 1)
+        self.oled.show_format_prompt()
 
     def _tick_format_confirm(self, btn: dict):
+        if self._format_awaiting_release:
+            # Phase 1: wait for user to release the initial hold
+            if btn["released"]:
+                self._format_awaiting_release = False
+                self.ucb.reset_button()
+            return
+
+        # Phase 2: waiting for new input
         if btn["is_held"]:
-            # User is still holding – check if confirm duration reached
-            hold = time.monotonic() - self._format_hold_start
-            if hold >= config.FORMAT_CONFIRM_HOLD:
+            if btn["hold_duration"] >= config.FORMAT_CONFIRM_HOLD:
                 self._do_format()
                 return
-            # Show countdown of remaining time
             remaining = int(config.FORMAT_CONFIRM_HOLD - btn["hold_duration"]) + 1
             self.oled.show_format_countdown(remaining)
-        else:
-            # Button released – cancel format
+        elif btn["released"]:
             self._cancel_format()
 
     def _do_format(self):
@@ -406,7 +411,11 @@ class FirewireController:
         log.info("Format cancelled")
         self.oled.show_format_cancelled()
         time.sleep(1.5)
-        self._enter_mode(self._camera_controlled)
+        self.oled.show_no_camera()
+        self.ucb.set_led(config.LED_DOUBLE_PULSE)
+        self._state = State.NO_CAMERA
+        self._no_camera_time = time.monotonic()
+        self.ucb.reset_button()
 
     def _tick_formatting(self, btn: dict):
         # Just wait – format is running synchronously in _do_format

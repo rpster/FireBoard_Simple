@@ -147,8 +147,8 @@ class OledDisplay:
             return
         img, draw = self._new_canvas()
         draw.text((0, 0), "FORMAT microSD?", fill=1, font=self._font)
-        draw.text((0, 12), "Keep holding = YES", fill=1, font=self._font)
-        draw.text((0, 23), "Release = CANCEL", fill=1, font=self._font)
+        draw.text((0, 12), "Hold 5s = FORMAT", fill=1, font=self._font)
+        draw.text((0, 23), "Press = CANCEL", fill=1, font=self._font)
         self._show(img)
 
     def show_format_countdown(self, seconds: int):
