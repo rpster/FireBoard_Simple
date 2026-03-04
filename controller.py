@@ -178,6 +178,14 @@ class FirewireController:
 
         self._prev_clip_str = ""
 
+        if not self.dvgrab:
+            log.warning("No camera available – staying in NO_CAMERA state")
+            self.oled.show_no_camera()
+            self.ucb.set_led(config.LED_DOUBLE_PULSE)
+            self._state = State.NO_CAMERA
+            self._no_camera_time = time.monotonic()
+            return
+
         if camera_controlled:
             # Camera Controlled ON
             self.dvgrab.start(camera_controlled=True)
