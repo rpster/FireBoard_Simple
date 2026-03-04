@@ -43,6 +43,7 @@ SAVE_DIR_NAME = "captures"
 DVGRAB_BIN = "/usr/local/bin/dvgrab"
 FW_DEVICE_PATH = "/dev/fw1"         # FireWire device node; presence = camera connected
 FW_INIT_DELAY = 10                  # Seconds to wait at startup for FireWire subsystem
+FW_BUS_SETTLE_DELAY = 3             # Seconds to wait after /dev/fw1 appears for bus to settle
 DVGRAB_FILE_PREFIX = "clip-"
 # Patterns we watch for in dvgrab stdout/stderr
 CAPTURE_STARTED_PATTERN = "Capture started"

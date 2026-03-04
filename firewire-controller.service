@@ -23,8 +23,7 @@ ProtectSystem=strict
 ReadWritePaths=/mnt/dvmedia /var/log /run /dev
 DeviceAllow=/dev/i2c-1 rw
 DeviceAllow=block-sd rw
-DeviceAllow=/dev/fw0 rw
-DeviceAllow=/dev/fw1 rw
+DeviceAllow=char-firewire rwm
 
 [Install]
 WantedBy=multi-user.target

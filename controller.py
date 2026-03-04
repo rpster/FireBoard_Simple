@@ -128,7 +128,9 @@ class FirewireController:
             if not self._running:
                 return
 
-        log.info("FireWire device %s found", config.FW_DEVICE_PATH)
+        log.info("FireWire device %s found – waiting %ds for bus to settle",
+                 config.FW_DEVICE_PATH, config.FW_BUS_SETTLE_DELAY)
+        time.sleep(config.FW_BUS_SETTLE_DELAY)
 
         # Init dvgrab manager
         self.dvgrab = DvgrabManager(self.storage_info["save_dir"])
