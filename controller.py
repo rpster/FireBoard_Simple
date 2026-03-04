@@ -193,11 +193,17 @@ class FirewireController:
                 handler(btn)
 
             # 4. Make sure dvgrab is still running (no camera → retry)
-            if self.dvgrab and (not self.dvgrab.running or self.dvgrab.camera_disconnected) and self._state not in (
+            fw_device_missing = not os.path.exists(config.FW_DEVICE_PATH)
+            if self.dvgrab and (
+                not self.dvgrab.running or self.dvgrab.camera_disconnected or fw_device_missing
+            ) and self._state not in (
                 State.FORMAT_CONFIRM, State.FORMATTING, State.NO_STORAGE,
                 State.STARTUP, State.NO_CAMERA,
             ):
-                log.warning("dvgrab process died – no camera detected")
+                if fw_device_missing:
+                    log.warning("FireWire device %s missing – no camera detected", config.FW_DEVICE_PATH)
+                else:
+                    log.warning("dvgrab process died – no camera detected")
                 self.dvgrab.stop()
                 self.oled.show_no_camera()
                 self.ucb.set_led(config.LED_DOUBLE_PULSE)
@@ -357,6 +363,12 @@ class FirewireController:
                 self._enter_mode(self._camera_controlled)
             else:
                 self._no_camera_time = time.monotonic()
+            if not os.path.exists(config.FW_DEVICE_PATH):
+                # Device still absent – reset timer and keep waiting
+                self._no_camera_time = time.monotonic()
+                return
+            log.info("Retrying camera connection (%s present)", config.FW_DEVICE_PATH)
+            self._enter_mode(self._camera_controlled)
 
     # ------------------------------------------------------------------
     # Shutdown
