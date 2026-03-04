@@ -233,11 +233,6 @@ class FirewireController:
             log.info("Recording started (camera-controlled)")
             return
 
-        # Check for format hold (only when not recording)
-        if self._input_settled() and btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
-            self._enter_format_mode()
-            return
-
     def _tick_cam_on_recording(self, btn: dict):
         events = self.dvgrab.poll_output() if self.dvgrab else []
         if "capture_stopped" in events:
@@ -267,11 +262,6 @@ class FirewireController:
             self.oled.show_recording("00:00:00")
             self._state = State.CAM_OFF_RECORDING
             log.info("Recording started (manual)")
-            return
-
-        # Check for format hold
-        if self._input_settled() and btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
-            self._enter_format_mode()
             return
 
     def _tick_cam_off_recording(self, btn: dict):
@@ -363,6 +353,11 @@ class FirewireController:
         pass
 
     def _tick_no_camera(self, btn: dict):
+        # Format hold is only available when no camera is connected
+        if btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
+            self._enter_format_mode()
+            return
+
         elapsed = time.monotonic() - self._no_camera_time
         if elapsed >= config.CAMERA_RETRY_DELAY:
             log.info("Retrying camera connection")
