@@ -149,7 +149,7 @@ class FirewireController:
         mode_name = "Cam Ctrl ON" if camera_controlled else "Cam Ctrl OFF"
         log.info("Entering mode: %s", mode_name)
         self.oled.show_mode(mode_name)
-        time.sleep(1.5)
+        time.sleep(3)
 
         # Stop any existing capture
         if self.dvgrab:
@@ -362,7 +362,7 @@ class FirewireController:
         self._state = State.FORMAT_CONFIRM
         self._format_hold_start = time.monotonic()
         self.ucb.set_led(config.LED_BLINK)
-        self.oled.show_format_prompt()
+        self.oled.show_format_countdown(int(config.FORMAT_CONFIRM_HOLD) + 1)
 
     def _tick_format_confirm(self, btn: dict):
         if btn["is_held"]:
@@ -395,7 +395,7 @@ class FirewireController:
             self.oled.show_error("Format failed")
             log.error("Format failed")
 
-        time.sleep(2)
+        time.sleep(4)
 
         # Re-init dvgrab with updated save_dir
         if self.dvgrab:
