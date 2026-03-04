@@ -274,7 +274,7 @@ class FirewireController:
     def _tick_cam_on_waiting(self, btn: dict):
         events = self.dvgrab.poll_output() if self.dvgrab else []
         if "capture_started" in events:
-            self.ucb.set_led(config.LED_BLINK)
+            self.ucb.set_led(config.LED_ON)
             self._state = State.CAM_ON_RECORDING
             self.oled.show_recording("00:00:00")
             log.info("Recording started (camera-controlled)")
