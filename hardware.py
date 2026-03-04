@@ -29,6 +29,11 @@ class UserControlBoard:
         self._switch_debounce_time: float = 0.0
         self._debounced_switch = False
         self._verify_device()
+        # Seed switch debounce state from hardware so the first read_switch()
+        # returns the actual position rather than the hardcoded False default.
+        raw_switch = bool(self._read_reg(config.UCB_REG_SWITCH) & 0x01)
+        self._last_switch_raw = raw_switch
+        self._debounced_switch = raw_switch
 
     # ------------------------------------------------------------------
     # Internal helpers
