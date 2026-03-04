@@ -32,6 +32,17 @@ if ! grep -q "i2c-dev" /etc/modules 2>/dev/null; then
     echo "i2c-dev" >> /etc/modules
 fi
 
+# Load FireWire modules now if not loaded
+modprobe firewire-core 2>/dev/null || true
+modprobe firewire-ohci 2>/dev/null || true
+
+for mod in firewire-core firewire-ohci; do
+    if ! grep -q "$mod" /etc/modules 2>/dev/null; then
+        echo "$mod" >> /etc/modules
+        echo "  $mod added to /etc/modules"
+    fi
+done
+
 # -------------------------------------------------------
 # 2. Install system packages
 # -------------------------------------------------------
