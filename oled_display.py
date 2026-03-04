@@ -40,6 +40,8 @@ class OledDisplay:
         self._device = None
         self._available = False
         self._font = None
+        self._font_regular = None
+        self._font_large_regular = None
         self._font_large = None
         self._font_xl = None
         self._font_startup_title = None
@@ -70,6 +72,8 @@ class OledDisplay:
             self._device.contrast(200)
             self._available = True
             self._font = _load_font(12, bold=True)
+            self._font_regular = _load_font(12, bold=False)
+            self._font_large_regular = _load_font(16, bold=False)
             self._font_large = _load_font(14)
             self._font_xl = _load_font(18)
             self._font_startup_title = _load_font(16, bold=True)
@@ -186,10 +190,10 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        title = "Waiting for Rec" if camera_controlled else "Press to Rec"
+        title = "Press Rec on Cam" if camera_controlled else "Press to Rec"
         draw.text((0, 0), title, fill=1, font=self._font)
         if prev_clip_len:
-            draw.text((0, 12), f"Last: {prev_clip_len}", fill=1, font=self._font)
+            draw.text((0, 14), f"Last: {prev_clip_len}", fill=1, font=self._font_regular)
         self._show(img)
 
     def show_recording(self, runtime_str: str):
@@ -200,7 +204,7 @@ class OledDisplay:
         # Large "REC" with dot
         draw.ellipse((0, 2, 8, 10), fill=1)
         draw.text((12, 0), "REC", fill=1, font=self._font_large)
-        draw.text((0, 20), runtime_str, fill=1, font=self._font)
+        draw.text((0, 16), runtime_str, fill=1, font=self._font_large_regular)
         self._show(img)
 
     def show_ready(self):
