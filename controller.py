@@ -358,10 +358,17 @@ class FirewireController:
             self._enter_format_mode()
             return
 
+        # Don't retry camera while button is held (user may be initiating format)
+        if btn["is_held"]:
+            return
+
         elapsed = time.monotonic() - self._no_camera_time
         if elapsed >= config.CAMERA_RETRY_DELAY:
-            log.info("Retrying camera connection")
-            self._enter_mode(self._camera_controlled)
+            if os.path.exists(config.FIREWIRE_DEVICE):
+                log.info("Firewire device detected – retrying camera connection")
+                self._enter_mode(self._camera_controlled)
+            else:
+                self._no_camera_time = time.monotonic()
 
     # ------------------------------------------------------------------
     # Shutdown
