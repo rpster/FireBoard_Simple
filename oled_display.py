@@ -196,7 +196,7 @@ class OledDisplay:
             draw.text((0, 14), f"Last: {prev_clip_len}", fill=1, font=self._font_regular)
         self._show(img)
 
-    def show_recording(self, runtime_str: str):
+    def show_recording(self, runtime_str: str, camera_controlled: bool = False):
         """REC + live runtime."""
         if not self._available:
             return
@@ -204,7 +204,8 @@ class OledDisplay:
         # Blink record dot at 500ms interval
         if int(time.monotonic() / 0.5) % 2 == 0:
             draw.ellipse((0, 2, 8, 10), fill=1)
-        draw.text((12, 0), "REC", fill=1, font=self._font_large)
+        label = "REC | CAM CTRL" if camera_controlled else "REC | MANUAL"
+        draw.text((12, 0), label, fill=1, font=self._font_large)
         draw.text((0, 16), runtime_str, fill=1, font=self._font_large_regular)
         self._show(img)
 
