@@ -36,6 +36,7 @@ class DvgrabManager:
         self._record_start_time: float | None = None
         self._last_clip_duration: float = 0.0
         self._output_buffer = ""
+        self._camera_disconnected = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -70,6 +71,7 @@ class DvgrabManager:
             self._recording = False
             self._record_start_time = None
             self._output_buffer = ""
+            self._camera_disconnected = False
             log.info("dvgrab started pid=%d", pid)
 
     def stop(self):
@@ -198,7 +200,11 @@ class DvgrabManager:
                 continue
             log.info("dvgrab: %s", line)
 
-            if config.CAPTURE_STARTED_PATTERN.lower() in line.lower():
+            if config.CAMERA_DISCONNECTED_PATTERN.lower() in line.lower():
+                log.warning("Camera disconnected (dvgrab: %s)", line)
+                self._camera_disconnected = True
+                events.append("camera_disconnected")
+            elif config.CAPTURE_STARTED_PATTERN.lower() in line.lower():
                 events.append("capture_started")
                 self._recording = True
                 self._record_start_time = time.monotonic()
@@ -212,6 +218,10 @@ class DvgrabManager:
     # ------------------------------------------------------------------
     # Recording state
     # ------------------------------------------------------------------
+    @property
+    def camera_disconnected(self) -> bool:
+        return self._camera_disconnected
+
     @property
     def is_recording(self) -> bool:
         return self._recording
