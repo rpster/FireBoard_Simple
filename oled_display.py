@@ -86,9 +86,10 @@ class OledDisplay:
     # ------------------------------------------------------------------
     # Drawing helpers
     # ------------------------------------------------------------------
-    def _new_canvas(self) -> tuple:
+    def _new_canvas(self, inverted: bool = False) -> tuple:
         """Return (Image, ImageDraw) for the display size."""
-        img = Image.new("1", (config.OLED_WIDTH, config.OLED_HEIGHT), 0)
+        img = Image.new("1", (config.OLED_WIDTH, config.OLED_HEIGHT),
+                        1 if inverted else 0)
         draw = ImageDraw.Draw(img)
         return img, draw
 
@@ -103,6 +104,11 @@ class OledDisplay:
             except Exception:
                 log.debug("OLED write failed – will retry next frame")
 
+    def reset_loading_dots(self):
+        """Reset loading dots animation state."""
+        self._loading_dots = 0
+        self._loading_last_time = 0.0
+
     def reset_scroll(self):
         """Reset horizontal scroll state."""
         self._scroll_offset = 0.0
@@ -110,13 +116,13 @@ class OledDisplay:
         self._scroll_pause_until = 0.0
         self._scroll_last_time = 0.0
 
-    def _draw_scrolling_line(self, draw, y, text, font, force_scroll=False):
+    def _draw_scrolling_line(self, draw, y, text, font, force_scroll=False, fill=1):
         """Draw a line of text that scrolls horizontally if it exceeds display width."""
         bbox = font.getbbox(text)
         text_width = bbox[2] - bbox[0]
 
         if text_width <= config.OLED_WIDTH and not force_scroll:
-            draw.text((0, y), text, fill=1, font=font)
+            draw.text((0, y), text, fill=fill, font=font)
             return
 
         gap = 40  # pixel gap between repetitions
@@ -142,9 +148,9 @@ class OledDisplay:
             self._scroll_last_time = now  # Keep current during pause
 
         offset = int(self._scroll_offset)
-        draw.text((-offset, y), text, fill=1, font=font)
+        draw.text((-offset, y), text, fill=fill, font=font)
         if offset > 0:
-            draw.text((-offset + total_scroll, y), text, fill=1, font=font)
+            draw.text((-offset + total_scroll, y), text, fill=fill, font=font)
 
     # ------------------------------------------------------------------
     # Public high-level screens
@@ -208,39 +214,43 @@ class OledDisplay:
         """Format confirmation prompt with scrolling instruction line."""
         if not self._available:
             return
-        img, draw = self._new_canvas()
-        draw.text((0, 0), "FORMAT microSD?", fill=1, font=self._font)
-        self._draw_scrolling_line(draw, 16, "Hold 5s = FORMAT | Press = CANCEL", self._font)
+        img, draw = self._new_canvas(inverted=True)
+        draw.text((0, 0), "FORMAT microSD?", fill=0, font=self._font)
+        self._draw_scrolling_line(draw, 16, "Hold 5s = FORMAT | Press = CANCEL", self._font, fill=0)
         self._show(img)
 
     def show_format_countdown(self, seconds: int):
         """Format countdown while button is held."""
         if not self._available:
             return
-        img, draw = self._new_canvas()
-        draw.text((0, 0), f"Formatting in {seconds}s", fill=1, font=self._font)
-        draw.text((0, 16), "Release to CANCEL", fill=1, font=self._font)
+        img, draw = self._new_canvas(inverted=True)
+        draw.text((0, 0), f"Formatting in {seconds}s", fill=0, font=self._font)
+        draw.text((0, 16), "Release to CANCEL", fill=0, font=self._font)
         self._show(img)
 
     def show_formatting(self):
         if not self._available:
             return
-        img, draw = self._new_canvas()
-        draw.text((0, 5), "Formatting...", fill=1, font=self._font_xl)
+        now = time.monotonic()
+        if now - self._loading_last_time >= 0.3:
+            self._loading_last_time = now
+            self._loading_dots = (self._loading_dots + 1) % 6
+        img, draw = self._new_canvas(inverted=True)
+        draw.text((0, 5), "Formatting" + "." * self._loading_dots, fill=0, font=self._font)
         self._show(img)
 
     def show_format_done(self):
         if not self._available:
             return
-        img, draw = self._new_canvas()
-        draw.text((0, 5), "Format complete!", fill=1, font=self._font_xl)
+        img, draw = self._new_canvas(inverted=True)
+        draw.text((0, 5), "Format OK!", fill=0, font=self._font_xl)
         self._show(img)
 
     def show_format_cancelled(self):
         if not self._available:
             return
-        img, draw = self._new_canvas()
-        draw.text((0, 5), "Format cancelled", fill=1, font=self._font_xl)
+        img, draw = self._new_canvas(inverted=True)
+        draw.text((0, 5), "Format Stop", fill=0, font=self._font_xl)
         self._show(img)
 
     def show_saving(self, clip_duration: str = ""):
@@ -284,5 +294,5 @@ class OledDisplay:
             self._loading_dots = (self._loading_dots + 1) % 6
         img, draw = self._new_canvas()
         draw.text((0, 0), "1394Pi", fill=1, font=self._font_startup_title)
-        draw.text((0, 21), "Loading" + "." * self._loading_dots, fill=1, font=self._font_startup_sub)
+        draw.text((0, 19), "Loading" + "." * self._loading_dots, fill=1, font=self._font_startup_sub)
         self._show(img)

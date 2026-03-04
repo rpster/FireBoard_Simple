@@ -10,6 +10,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 import config
@@ -413,12 +414,20 @@ class FirewireController:
     def _do_format(self):
         log.info("Formatting external microSD")
         self._state = State.FORMATTING
-        self.oled.show_formatting()
 
         if self.dvgrab:
             self.dvgrab.stop()
 
-        success = format_storage(self.storage_info)
+        result = [None]
+        def _run_format():
+            result[0] = format_storage(self.storage_info)
+        fmt_thread = threading.Thread(target=_run_format, daemon=True)
+        self.oled.reset_loading_dots()
+        fmt_thread.start()
+        while fmt_thread.is_alive():
+            self.oled.show_formatting()
+            time.sleep(config.POLL_INTERVAL)
+        success = result[0]
 
         if success:
             self.oled.show_format_done()
@@ -436,7 +445,7 @@ class FirewireController:
     def _cancel_format(self):
         log.info("Format cancelled")
         self.oled.show_format_cancelled()
-        time.sleep(1.5)
+        time.sleep(4)
         self.oled.show_no_camera()
         self.ucb.set_led(config.LED_DOUBLE_PULSE)
         self._state = State.NO_CAMERA
