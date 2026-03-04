@@ -51,7 +51,7 @@ CAMERA_DISCONNECTED_PATTERN = "send oops"
 # Timing (seconds)
 # ---------------------------------------------------------------------------
 POLL_INTERVAL = 0.05          # 50 ms main loop tick
-FORMAT_HOLD_TRIGGER = 3.0     # Hold to enter format mode
+FORMAT_HOLD_TRIGGER = 5.0     # Hold to enter format mode
 FORMAT_CONFIRM_HOLD = 5.0     # Hold to confirm format
 CAMERA_RETRY_DELAY = 5.0      # Wait before retrying after no camera
 STORAGE_CHECK_INTERVAL = 2.0  # Seconds between external drive presence checks

@@ -325,31 +325,20 @@ class FirewireController:
     def _enter_format_mode(self):
         log.info("Entering format confirmation mode")
         self._state = State.FORMAT_CONFIRM
-        self._format_hold_start = None
+        self._format_hold_start = time.monotonic()
         self.ucb.set_led(config.LED_BLINK)
         self.oled.show_format_prompt()
 
     def _tick_format_confirm(self, btn: dict):
         if btn["is_held"]:
-            if self._format_hold_start is None:
-                self._format_hold_start = time.monotonic()
+            # User is still holding – check if confirm duration reached
             hold = time.monotonic() - self._format_hold_start
             if hold >= config.FORMAT_CONFIRM_HOLD:
                 self._do_format()
                 return
         else:
-            # Button released or not held
-            if btn["released"] and self._format_hold_start is not None:
-                # Short press = cancel
-                hold = time.monotonic() - self._format_hold_start
-                if hold < config.FORMAT_CONFIRM_HOLD:
-                    self._cancel_format()
-                    return
-            if btn["pressed"] and self._format_hold_start is None:
-                # First press after entering format mode = cancel
-                self._cancel_format()
-                return
-            self._format_hold_start = None
+            # Button released – cancel format
+            self._cancel_format()
 
     def _do_format(self):
         log.info("Formatting external microSD")
@@ -405,6 +394,11 @@ class FirewireController:
         self._enter_mode(self._camera_controlled)
 
     def _tick_no_camera(self, btn: dict):
+        # Allow format hold even without a camera
+        if self.storage_info and btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
+            self._enter_format_mode()
+            return
+
         elapsed = time.monotonic() - self._no_camera_time
         if elapsed >= config.CAMERA_RETRY_DELAY:
             if not os.path.exists(config.FW_DEVICE_PATH):
