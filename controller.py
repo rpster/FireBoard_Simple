@@ -66,6 +66,7 @@ class FirewireController:
         # Format-mode tracking
         self._format_hold_start: float | None = None
         self._no_camera_time: float | None = None
+        self._mode_entered_time: float = 0.0
 
         # Signal handlers
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -121,6 +122,8 @@ class FirewireController:
     # ------------------------------------------------------------------
     def _enter_mode(self, camera_controlled: bool):
         """Transition into the selected mode."""
+        if not self._running:
+            return
         self._camera_controlled = camera_controlled
         mode_name = "Cam Ctrl ON" if camera_controlled else "Cam Ctrl OFF"
         log.info("Entering mode: %s", mode_name)
@@ -146,6 +149,11 @@ class FirewireController:
             self.oled.show_ready()
             self._state = State.CAM_OFF_READY
 
+        # Reset button state so stale holds don't carry across mode switches
+        self.ucb.reset_button()
+        # Let I2C bus settle after dvgrab starts firewire I/O
+        self._mode_entered_time = time.monotonic()
+
     # ------------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------------
@@ -165,7 +173,9 @@ class FirewireController:
                     continue
             self._prev_switch = current_switch
 
-            # 2. Poll button
+            # 2. Poll button (suppress during I2C settle period)
+            if not self._input_settled():
+                self.ucb.reset_button()
             btn = self.ucb.poll_button()
 
             # 3. Dispatch based on state
@@ -205,6 +215,10 @@ class FirewireController:
         if sleep_time > 0:
             time.sleep(sleep_time)
 
+    def _input_settled(self) -> bool:
+        """True once enough time has passed after a mode switch for I2C to settle."""
+        return (time.monotonic() - self._mode_entered_time) >= config.INPUT_SETTLE_TIME
+
     # ------------------------------------------------------------------
     # State handlers
     # ------------------------------------------------------------------
@@ -220,7 +234,7 @@ class FirewireController:
             return
 
         # Check for format hold (only when not recording)
-        if btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
+        if self._input_settled() and btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
             self._enter_format_mode()
             return
 
@@ -245,7 +259,7 @@ class FirewireController:
         if self.dvgrab:
             self.dvgrab.poll_output()
 
-        if btn["pressed"]:
+        if btn["pressed"] and self._input_settled():
             # Start capture
             self.dvgrab.send_capture_start()
             self.dvgrab.is_recording = True
@@ -256,7 +270,7 @@ class FirewireController:
             return
 
         # Check for format hold
-        if btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
+        if self._input_settled() and btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
             self._enter_format_mode()
             return
 

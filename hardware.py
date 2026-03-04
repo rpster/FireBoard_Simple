@@ -19,11 +19,15 @@ class UserControlBoard:
     def __init__(self, bus: smbus2.SMBus | None = None):
         self._bus = bus or smbus2.SMBus(config.I2C_BUS)
         self._addr = config.UCB_I2C_ADDR
+        self._last_good: dict[int, int] = {}  # reg -> last known good value
         self._last_button_raw = False
         self._button_press_start: float | None = None
         self._last_debounce_time: float = 0.0
         self._debounced_state = False
         self._prev_debounced_state = False
+        self._last_switch_raw = False
+        self._switch_debounce_time: float = 0.0
+        self._debounced_switch = False
         self._verify_device()
 
     # ------------------------------------------------------------------
@@ -32,25 +36,41 @@ class UserControlBoard:
     def _verify_device(self):
         """Quick probe to make sure the board is on the bus."""
         try:
-            self._bus.read_byte_data(self._addr, config.UCB_REG_BUTTON)
+            self._read_reg(config.UCB_REG_BUTTON)
             log.info("User control board detected at 0x%02X", self._addr)
         except OSError:
             log.error("User control board NOT found at 0x%02X", self._addr)
             raise
 
     def _read_reg(self, reg: int) -> int:
-        try:
-            return self._bus.read_byte_data(self._addr, reg)
-        except OSError:
-            log.warning("I2C read error addr=0x%02X reg=0x%02X", self._addr, reg)
-            return 0
+        """Read a register with inter-transaction gap and retries.
+
+        The ATtiny85 USI slave needs time to process I2C stop conditions
+        and reset its state machine between transactions.
+        """
+        for attempt in range(config.I2C_RETRIES):
+            try:
+                val = self._bus.read_byte_data(self._addr, reg)
+                time.sleep(config.I2C_GAP)
+                self._last_good[reg] = val
+                return val
+            except OSError:
+                time.sleep(config.I2C_RETRY_DELAY)
+        log.warning("I2C read failed addr=0x%02X reg=0x%02X after %d attempts",
+                    self._addr, reg, config.I2C_RETRIES)
+        return self._last_good.get(reg, 0)
 
     def _write_reg(self, reg: int, value: int):
-        try:
-            self._bus.write_byte_data(self._addr, reg, value)
-        except OSError:
-            log.warning("I2C write error addr=0x%02X reg=0x%02X val=0x%02X",
-                        self._addr, reg, value)
+        """Write a register with inter-transaction gap and retries."""
+        for attempt in range(config.I2C_RETRIES):
+            try:
+                self._bus.write_byte_data(self._addr, reg, value)
+                time.sleep(config.I2C_GAP)
+                return
+            except OSError:
+                time.sleep(config.I2C_RETRY_DELAY)
+        log.warning("I2C write failed addr=0x%02X reg=0x%02X val=0x%02X after %d attempts",
+                    self._addr, reg, value, config.I2C_RETRIES)
 
     # ------------------------------------------------------------------
     # Public API
@@ -76,8 +96,11 @@ class UserControlBoard:
             self._last_debounce_time = now
         self._last_button_raw = raw
 
+        # Snapshot previous state BEFORE any update (every tick)
+        self._prev_debounced_state = self._debounced_state
+
+        # Only accept a new value once the signal is stable
         if (now - self._last_debounce_time) >= config.DEBOUNCE_TIME:
-            self._prev_debounced_state = self._debounced_state
             self._debounced_state = raw
 
         pressed = self._debounced_state and not self._prev_debounced_state
@@ -100,9 +123,34 @@ class UserControlBoard:
         }
 
     def read_switch(self) -> bool:
-        """Return True when slide switch is in ON position (Camera Controlled ON)."""
-        val = self._read_reg(config.UCB_REG_SWITCH)
-        return bool(val & 0x01)
+        """Return debounced switch state. True = Camera Controlled ON."""
+        now = time.monotonic()
+        raw = bool(self._read_reg(config.UCB_REG_SWITCH) & 0x01)
+
+        if raw != self._last_switch_raw:
+            self._switch_debounce_time = now
+        self._last_switch_raw = raw
+
+        if (now - self._switch_debounce_time) >= config.SWITCH_DEBOUNCE_TIME:
+            self._debounced_switch = raw
+
+        return self._debounced_switch
+
+    def reset_button(self):
+        """Reset button state after mode transitions.
+
+        Sets debounced state to True so that a noisy line reading
+        as 'pressed' does NOT generate a False→True edge.  A real
+        press will only register after the line is first seen as
+        released (True→False) then pressed again (False→True).
+        """
+        now = time.monotonic()
+        raw = self.read_button_raw()
+        self._last_button_raw = raw
+        self._last_debounce_time = now
+        self._debounced_state = raw
+        self._prev_debounced_state = raw
+        self._button_press_start = None
 
     def set_led(self, mode: int):
         """Set LED mode: LED_OFF, LED_ON, LED_PULSE, LED_BLINK, LED_DOUBLE_PULSE."""

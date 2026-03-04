@@ -78,7 +78,10 @@ class OledDisplay:
 
     def _show(self, img: "Image.Image"):
         if self._device:
-            self._device.display(img)
+            try:
+                self._device.display(img)
+            except Exception:
+                log.debug("OLED write failed – will retry next frame")
 
     # ------------------------------------------------------------------
     # Public high-level screens
