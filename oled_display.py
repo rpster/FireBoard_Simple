@@ -56,7 +56,7 @@ class OledDisplay:
                                    height=config.OLED_HEIGHT)
             self._device.contrast(200)
             self._available = True
-            self._font = _load_font(10)
+            self._font = _load_font(12)
             self._font_large = _load_font(16)
             log.info("OLED display detected at 0x%02X", config.OLED_I2C_ADDR)
         except Exception as exc:
@@ -109,8 +109,7 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 0), "Mode:", fill=1, font=self._font)
-        draw.text((0, 14), mode_name, fill=1, font=self._font_large)
+        draw.text((0, 8), mode_name, fill=1, font=self._font_large)
         self._show(img)
 
     def show_waiting(self, prev_clip_len: str = ""):
@@ -218,6 +217,6 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 4), "FW Controller", fill=1, font=self._font_large)
+        draw.text((0, 4), "1394Pi", fill=1, font=self._font_large)
         draw.text((0, 22), "Starting...", fill=1, font=self._font)
         self._show(img)
