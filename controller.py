@@ -312,7 +312,7 @@ class FirewireController:
         if "capture_started" in events:
             self.ucb.set_led(config.LED_ON)
             self._state = State.CAM_ON_RECORDING
-            self.oled.show_recording("00:00:00")
+            self.oled.show_recording("00:00:00", camera_controlled=True)
             log.info("Recording started (camera-controlled)")
             return
 
@@ -327,7 +327,7 @@ class FirewireController:
 
         # Update runtime display
         rt = self.dvgrab.get_recording_runtime()
-        self.oled.show_recording(DvgrabManager.format_duration(rt))
+        self.oled.show_recording(DvgrabManager.format_duration(rt), camera_controlled=True)
 
     # --- Camera Controlled OFF ---
     def _tick_cam_off_ready(self, btn: dict):
