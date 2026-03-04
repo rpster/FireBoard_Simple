@@ -64,7 +64,6 @@ class FirewireController:
         self.storage_info: dict | None = None
 
         # Format-mode tracking
-        self._format_hold_start: float | None = None
         self._no_camera_time: float | None = None
         self._mode_entered_time: float = 0.0
 
@@ -289,31 +288,20 @@ class FirewireController:
     def _enter_format_mode(self):
         log.info("Entering format confirmation mode")
         self._state = State.FORMAT_CONFIRM
-        self._format_hold_start = None
         self.ucb.set_led(config.LED_BLINK)
         self.oled.show_format_prompt()
 
     def _tick_format_confirm(self, btn: dict):
         if btn["is_held"]:
-            if self._format_hold_start is None:
-                self._format_hold_start = time.monotonic()
-            hold = time.monotonic() - self._format_hold_start
-            if hold >= config.FORMAT_CONFIRM_HOLD:
+            if btn["hold_duration"] >= config.FORMAT_CONFIRM_HOLD:
                 self._do_format()
                 return
+            # Show countdown of remaining time
+            remaining = int(config.FORMAT_CONFIRM_HOLD - btn["hold_duration"]) + 1
+            self.oled.show_format_countdown(remaining)
         else:
-            # Button released or not held
-            if btn["released"] and self._format_hold_start is not None:
-                # Short press = cancel
-                hold = time.monotonic() - self._format_hold_start
-                if hold < config.FORMAT_CONFIRM_HOLD:
-                    self._cancel_format()
-                    return
-            if btn["pressed"] and self._format_hold_start is None:
-                # First press after entering format mode = cancel
-                self._cancel_format()
-                return
-            self._format_hold_start = None
+            # Button released before total hold time reached – cancel
+            self._cancel_format()
 
     def _do_format(self):
         log.info("Formatting external microSD")
