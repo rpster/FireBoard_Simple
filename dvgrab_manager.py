@@ -113,12 +113,37 @@ class DvgrabManager:
         try:
             pid, status = os.waitpid(self._pid, os.WNOHANG)
             if pid != 0:
+                # Drain any remaining output so we can see why it died
+                self._drain_output()
+                if os.WIFEXITED(status):
+                    log.warning("dvgrab exited with code %d", os.WEXITSTATUS(status))
+                elif os.WIFSIGNALED(status):
+                    log.warning("dvgrab killed by signal %d", os.WTERMSIG(status))
                 self._pid = None
                 return False
         except ChildProcessError:
             self._pid = None
             return False
         return True
+
+    def _drain_output(self):
+        """Read and log any remaining output from dvgrab's pty."""
+        if self._master_fd is None:
+            return
+        try:
+            while True:
+                ready, _, _ = select.select([self._master_fd], [], [], 0)
+                if not ready:
+                    break
+                data = os.read(self._master_fd, 4096).decode("utf-8", errors="replace")
+                if not data:
+                    break
+                for line in data.splitlines():
+                    line = line.strip()
+                    if line:
+                        log.info("dvgrab: %s", line)
+        except OSError:
+            pass
 
     # ------------------------------------------------------------------
     # I/O
@@ -171,7 +196,7 @@ class DvgrabManager:
             line = line.strip()
             if not line:
                 continue
-            log.debug("dvgrab: %s", line)
+            log.info("dvgrab: %s", line)
 
             if config.CAPTURE_STARTED_PATTERN.lower() in line.lower():
                 events.append("capture_started")

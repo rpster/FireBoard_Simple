@@ -7,6 +7,9 @@ All tunable parameters and hardware addresses in one place.
 # I2C
 # ---------------------------------------------------------------------------
 I2C_BUS = 1  # /dev/i2c-1 on Raspberry Pi 5
+I2C_GAP = 0.01          # 10 ms pause after each I2C transaction (ATtiny85 USI needs this)
+I2C_RETRIES = 3         # retry attempts on I2C failure
+I2C_RETRY_DELAY = 0.05  # 50 ms backoff between retries
 
 # Custom user control board
 UCB_I2C_ADDR = 0x20
@@ -50,6 +53,8 @@ FORMAT_HOLD_TRIGGER = 3.0     # Hold to enter format mode
 FORMAT_CONFIRM_HOLD = 5.0     # Hold to confirm format
 CAMERA_RETRY_DELAY = 5.0      # Wait before retrying after no camera
 DEBOUNCE_TIME = 0.15          # Button debounce
+SWITCH_DEBOUNCE_TIME = 0.3    # Slide switch debounce
+INPUT_SETTLE_TIME = 1.0       # Ignore button after mode switch (I2C settles)
 
 # ---------------------------------------------------------------------------
 # Misc
