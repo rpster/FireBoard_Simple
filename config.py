@@ -40,6 +40,7 @@ SAVE_DIR_NAME = "captures"
 # dvgrab
 # ---------------------------------------------------------------------------
 DVGRAB_BIN = "/usr/local/bin/dvgrab"
+FW_DEVICE_PATH = "/dev/fw1"         # FireWire device node; presence = camera connected
 DVGRAB_FILE_PREFIX = "clip-"
 # Patterns we watch for in dvgrab stdout/stderr
 CAPTURE_STARTED_PATTERN = "Capture started"
