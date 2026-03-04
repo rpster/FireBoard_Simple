@@ -69,11 +69,11 @@ class OledDisplay:
                                    height=config.OLED_HEIGHT)
             self._device.contrast(200)
             self._available = True
-            self._font = _load_font(12)
+            self._font = _load_font(12, bold=True)
             self._font_large = _load_font(14)
             self._font_xl = _load_font(18)
             self._font_startup_title = _load_font(16, bold=True)
-            self._font_startup_sub = _load_font(10)
+            self._font_startup_sub = _load_font(10, bold=True)
             log.info("OLED display detected at 0x%02X", config.OLED_I2C_ADDR)
         except Exception as exc:
             log.info("No OLED display found (0x%02X): %s – headless mode",
