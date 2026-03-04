@@ -201,8 +201,9 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        # Large "REC" with dot
-        draw.ellipse((0, 2, 8, 10), fill=1)
+        # Blink record dot at 500ms interval
+        if int(time.monotonic() / 0.5) % 2 == 0:
+            draw.ellipse((0, 2, 8, 10), fill=1)
         draw.text((12, 0), "REC", fill=1, font=self._font_large)
         draw.text((0, 16), runtime_str, fill=1, font=self._font_large_regular)
         self._show(img)
@@ -215,12 +216,19 @@ class OledDisplay:
         self._show(img)
 
     def show_format_prompt(self):
-        """Format confirmation prompt with scrolling instruction line."""
+        """Format confirmation prompt with alternating instruction line."""
         if not self._available:
             return
         img, draw = self._new_canvas(inverted=True)
         draw.text((0, 0), "FORMAT microSD?", fill=0, font=self._font)
-        self._draw_scrolling_line(draw, 16, "Hold 5s = FORMAT | Press = CANCEL", self._font, fill=0)
+        # Alternate between two messages every 3 seconds
+        if int(time.monotonic() / 3) % 2 == 0:
+            prefix, suffix = "Hold 5s = ", "FORMAT"
+        else:
+            prefix, suffix = "Press = ", "CANCEL"
+        draw.text((0, 16), prefix, fill=0, font=self._font_regular)
+        px = self._font_regular.getbbox(prefix)[2]
+        draw.text((px, 16), suffix, fill=0, font=self._font)
         self._show(img)
 
     def show_format_countdown(self, seconds: int):
