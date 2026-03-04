@@ -44,6 +44,7 @@ DVGRAB_FILE_PREFIX = "clip-"
 # Patterns we watch for in dvgrab stdout/stderr
 CAPTURE_STARTED_PATTERN = "Capture started"
 CAPTURE_STOPPED_PATTERN = "Capture stopped"
+CAMERA_DISCONNECTED_PATTERN = "send oops"
 
 # ---------------------------------------------------------------------------
 # Timing (seconds)

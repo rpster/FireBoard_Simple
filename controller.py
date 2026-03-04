@@ -194,7 +194,7 @@ class FirewireController:
                 handler(btn)
 
             # 4. Make sure dvgrab is still running (no camera → retry)
-            if self.dvgrab and not self.dvgrab.running and self._state not in (
+            if self.dvgrab and (not self.dvgrab.running or self.dvgrab.camera_disconnected) and self._state not in (
                 State.FORMAT_CONFIRM, State.FORMATTING, State.NO_STORAGE,
                 State.STARTUP, State.NO_CAMERA,
             ):
