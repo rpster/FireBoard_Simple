@@ -3,6 +3,7 @@
 ## Prerequisites
 
 - Raspberry Pi 5 running Raspberry Pi OS (Debian-based)
+- **Custom kernel with FireWire support** - Standard Raspberry Pi OS kernels do not include FireWire modules. You must compile a kernel with `CONFIG_FIREWIRE` and `CONFIG_FIREWIRE_OHCI` enabled. See [Kernel Setup](Kernel-Setup) for details.
 - I2C enabled in boot configuration
 - Internet connection for package installation
 

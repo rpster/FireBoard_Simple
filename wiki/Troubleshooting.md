@@ -30,6 +30,7 @@ The FireWire device `/dev/fw1` is not present.
    sudo modprobe firewire-core
    sudo modprobe firewire-ohci
    ```
+   If `modprobe` fails with `Module not found`, your kernel was not compiled with FireWire support. Standard Raspberry Pi OS kernels do not include it. See [Kernel Setup](Kernel-Setup) for instructions on building a custom kernel.
 5. Check the PCIe FireWire card is recognized: `lspci | grep 1394`
 6. Try power-cycling the camera
 

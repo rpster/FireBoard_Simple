@@ -6,6 +6,7 @@ using a Raspberry Pi 5 or CM5 with a PCIe FireWire card, custom I2C user control
 ## Hardware Requirements
 
 - Raspberry Pi 5 (also compatible with CM5)
+- Custom kernel with FireWire support (standard Raspberry Pi OS images do not include it — see [Kernel Setup](wiki/Kernel-Setup.md))
 - PCIe FireWire (IEEE 1394) card
 - External USB drive or microSD card reader (USB 2.0)
 - Custom I2C user control board (button, LED, slide switch)

@@ -17,6 +17,7 @@ A headless DV camera capture system built on the Raspberry Pi 5. It uses a PCIe 
 | Page | Description |
 |------|-------------|
 | [Hardware Setup](Hardware-Setup) | Bill of materials, I2C wiring, register protocol |
+| [Kernel Setup](Kernel-Setup) | Building a custom kernel with FireWire support |
 | [Installation](Installation) | System setup, dependencies, running the installer |
 | [dvgrab](dvgrab) | Fork details, build instructions, capture modes |
 | [User Guide](User-Guide) | How to operate the controller day-to-day |
