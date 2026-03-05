@@ -371,12 +371,37 @@ class FirewireController:
         self._saving_clip_str = self._prev_clip_str
         self.ucb.set_led(config.LED_FAST_BLINK)
         self.oled.show_saving(self._saving_clip_str)
-        mount = self.storage_info["mount_point"] if self.storage_info else "/"
-        self._sync_proc = subprocess.Popen(
-            ["sync", "-f", mount],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        # sync only the capture files + their parent directory, not the
+        # entire filesystem.  sync -f calls syncfs() which flushes every
+        # dirty page on the device (metadata, allocation bitmap, etc.)
+        # and is very slow on USB storage.  sync <file…> calls fsync()
+        # per file, flushing only the relevant data blocks.
+        save_dir = self.storage_info["save_dir"] if self.storage_info else None
+        targets = []
+        if save_dir:
+            try:
+                targets = [
+                    os.path.join(save_dir, f)
+                    for f in os.listdir(save_dir)
+                    if f.startswith(config.DVGRAB_FILE_PREFIX)
+                ]
+            except OSError:
+                pass
+            # Also sync the directory so the new entry is persisted
+            targets.append(save_dir)
+        if targets:
+            self._sync_proc = subprocess.Popen(
+                ["sync", "--"] + targets,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            mount = self.storage_info["mount_point"] if self.storage_info else "/"
+            self._sync_proc = subprocess.Popen(
+                ["sync", "-f", mount],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         self._state = State.SAVING
 
     def _tick_saving(self, btn: dict):
