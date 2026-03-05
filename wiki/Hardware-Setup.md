@@ -40,6 +40,8 @@ The custom control board exposes three registers over I2C:
 | `0x04` | DOUBLE_PULSE | No storage or no camera detected |
 | `0x05` | FAST_BLINK | Saving/syncing data to disk |
 
+See [User Control Board](User-Control-Board) for firmware source, build instructions, and SPI flashing guide.
+
 ## I2C Communication Details
 
 The driver implements reliability features to handle ATtiny85 USI timing constraints:

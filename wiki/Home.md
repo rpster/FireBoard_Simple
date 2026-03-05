@@ -22,6 +22,7 @@ A headless DV camera capture system built on the Raspberry Pi 5. It uses a PCIe 
 | [User Guide](User-Guide) | How to operate the controller day-to-day |
 | [Architecture](Architecture) | State machine, module design, developer reference |
 | [Configuration](Configuration) | All tunable parameters in `config.py` |
+| [User Control Board](User-Control-Board) | ATtiny85 firmware, build guide, SPI flashing from Pi 5 |
 | [Troubleshooting](Troubleshooting) | Common issues and how to resolve them |
 
 ## File Structure

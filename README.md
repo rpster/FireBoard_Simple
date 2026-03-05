@@ -62,6 +62,12 @@ This will:
 
 ```
 firewire-controller/
+├── User Control Board/     # ATtiny85 I2C control board
+│   ├── firmware/
+│   │   ├── main.c          # ATtiny85 firmware source
+│   │   └── Makefile        # Build & flash targets (Pi 5 SPI)
+│   ├── test_board.py       # Interactive test script
+│   └── README.md           # Board documentation
 ├── install.sh              # Installation script
 ├── requirements.txt        # Python dependencies
 ├── config.py               # System configuration constants
