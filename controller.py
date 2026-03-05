@@ -48,6 +48,7 @@ class State:
     NO_CAMERA = "no_camera"
     SAVING = "saving"
     CARD_DETECTED = "card_detected"
+    MENU = "menu"
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +71,7 @@ class FirewireController:
         # Format-mode tracking
         self._no_camera_time: float | None = None
         self._format_awaiting_release = False
+        self._format_from_menu = False
         self._mode_entered_time: float = 0.0
         self._last_storage_check: float = 0.0
         self._last_fw_device_check: float = 0.0
@@ -79,6 +81,14 @@ class FirewireController:
         self._sync_proc: subprocess.Popen | None = None
         self._saving_clip_str: str = ""
         self._card_detected_time: float = 0.0
+
+        # Menu tracking
+        self._menu_index = 0
+        self._menu_scroll = 0
+        self._menu_awaiting_release = False
+        self._menu_items: list[str] = []
+        self._wifi_rfkill_id: str | None = None
+        self._bt_rfkill_id: str | None = None
 
         # Signal handlers
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -96,6 +106,7 @@ class FirewireController:
             State.CARD_DETECTED: self._tick_card_detected,
             State.NO_CAMERA: self._tick_no_camera,
             State.SAVING: self._tick_saving,
+            State.MENU: self._tick_menu,
         }
 
     def _handle_signal(self, signum, frame):
@@ -108,6 +119,10 @@ class FirewireController:
     def startup(self):
         """Run once after boot."""
         log.info("=== Firewire Controller starting ===")
+
+        # Log initial WiFi/BT status
+        self._is_wifi_enabled()
+        self._is_bt_enabled()
 
         # Write PID file
         with open(config.PID_FILE, "w") as f:
@@ -219,7 +234,7 @@ class FirewireController:
             # 1. Check for mode switch change
             current_switch = self.ucb.read_switch()
             if self._prev_switch is not None and current_switch != self._prev_switch:
-                if self._state not in (State.FORMAT_CONFIRM, State.FORMATTING):
+                if self._state not in (State.FORMAT_CONFIRM, State.FORMATTING, State.MENU):
                     self._enter_mode(current_switch)
                     self._prev_switch = current_switch
                     self._tick_sleep(tick_start)
@@ -243,7 +258,7 @@ class FirewireController:
                 self._last_storage_check = now
                 if self.storage_info and self._state not in (
                     State.NO_STORAGE, State.FORMAT_CONFIRM, State.FORMATTING,
-                    State.STARTUP,
+                    State.STARTUP, State.MENU,
                 ):
                     if not is_storage_present(self.storage_info):
                         log.warning("External drive removed")
@@ -266,7 +281,7 @@ class FirewireController:
                 not self.dvgrab.running or self.dvgrab.camera_disconnected or fw_device_missing
             ) and self._state not in (
                 State.FORMAT_CONFIRM, State.FORMATTING, State.NO_STORAGE,
-                State.STARTUP, State.NO_CAMERA, State.SAVING,
+                State.STARTUP, State.NO_CAMERA, State.SAVING, State.MENU,
             ):
                 if fw_device_missing:
                     log.warning("FireWire device %s missing – no camera detected", config.FW_DEVICE_PATH)
@@ -294,6 +309,7 @@ class FirewireController:
             State.CAM_ON_RECORDING,
             State.CAM_OFF_RECORDING,
             State.FORMAT_CONFIRM,
+            State.MENU,
         ):
             return config.POLL_INTERVAL
         return config.POLL_INTERVAL_IDLE
@@ -308,6 +324,9 @@ class FirewireController:
 
     # --- Camera Controlled ON ---
     def _tick_cam_on_waiting(self, btn: dict):
+        if btn["is_held"] and btn["hold_duration"] >= config.MENU_HOLD_TRIGGER:
+            self._enter_menu()
+            return
         events = self.dvgrab.poll_output() if self.dvgrab else []
         if "capture_started" in events:
             self.ucb.set_led(config.LED_ON)
@@ -331,12 +350,16 @@ class FirewireController:
 
     # --- Camera Controlled OFF ---
     def _tick_cam_off_ready(self, btn: dict):
+        if btn["is_held"] and btn["hold_duration"] >= config.MENU_HOLD_TRIGGER:
+            self._enter_menu()
+            return
+
         # Drain dvgrab output
         if self.dvgrab:
             self.dvgrab.poll_output()
 
-        if btn["pressed"] and self._input_settled():
-            # Start capture
+        if btn["released"] and self._input_settled():
+            # Short press (< 5s hold) → start capture
             self.dvgrab.send_capture_start()
             self.dvgrab.is_recording = True
             self.ucb.set_led(config.LED_ON)
@@ -358,6 +381,9 @@ class FirewireController:
             self._prev_clip_str = DvgrabManager.format_duration(dur)
             log.info("Recording stopped (manual) duration=%s", self._prev_clip_str)
             self._enter_saving()
+            # Let I2C and button state settle after saving screen is shown
+            time.sleep(config.STOP_REC_SETTLE)
+            self.ucb.reset_button()
             return
 
         # Update runtime display
@@ -474,6 +500,10 @@ class FirewireController:
 
         time.sleep(4)
 
+        if self._format_from_menu:
+            self._return_to_menu()
+            return
+
         # Re-init dvgrab with updated save_dir
         self.dvgrab = DvgrabManager(self.storage_info["save_dir"])
         self._enter_mode(self._camera_controlled)
@@ -482,6 +512,9 @@ class FirewireController:
         log.info("Format cancelled")
         self.oled.show_format_cancelled()
         time.sleep(4)
+        if self._format_from_menu:
+            self._return_to_menu()
+            return
         self.oled.show_no_camera()
         self.ucb.set_led(config.LED_DOUBLE_PULSE)
         self._state = State.NO_CAMERA
@@ -491,6 +524,157 @@ class FirewireController:
     def _tick_formatting(self, btn: dict):
         # Just wait – format is running synchronously in _do_format
         pass
+
+    # --- Menu system ---
+    def _build_menu_items(self) -> list[str]:
+        """Build menu item labels with current WiFi/BT status."""
+        wifi_state = "ON" if self._is_wifi_enabled() else "OFF"
+        bt_state = "ON" if self._is_bt_enabled() else "OFF"
+        return [f"Wifi: {wifi_state}", f"BT: {bt_state}", "Format", "Exit"]
+
+    def _rfkill_soft_blocked(self, rfkill_type: str) -> tuple[bool, str] | None:
+        """Check rfkill soft-block state for a given type (e.g. 'wlan', 'bluetooth').
+
+        Returns (soft_blocked, id) or None on error.
+        Parses the table output of plain ``rfkill`` which looks like::
+
+            ID TYPE      DEVICE      SOFT      HARD
+             0 bluetooth hci0     blocked unblocked
+             1 wlan      phy0   unblocked unblocked
+        """
+        try:
+            result = subprocess.run(
+                ["/usr/sbin/rfkill"], capture_output=True, text=True, timeout=5,
+            )
+            for line in result.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 5 and parts[1] == rfkill_type:
+                    return (parts[3] != "unblocked", parts[0])
+        except Exception as exc:
+            log.warning("rfkill query failed for %s: %s", rfkill_type, exc)
+        return None
+
+    def _is_wifi_enabled(self) -> bool:
+        info = self._rfkill_soft_blocked("wlan")
+        if info is not None:
+            blocked, rfkill_id = info
+            self._wifi_rfkill_id = rfkill_id
+            enabled = not blocked
+            log.info("WiFi status: %s (rfkill id %s)", "enabled" if enabled else "disabled", rfkill_id)
+            return enabled
+        log.info("WiFi status: unavailable (rfkill interface not found)")
+        return False
+
+    def _is_bt_enabled(self) -> bool:
+        info = self._rfkill_soft_blocked("bluetooth")
+        if info is not None:
+            blocked, rfkill_id = info
+            self._bt_rfkill_id = rfkill_id
+            enabled = not blocked
+            log.info("BT status: %s (rfkill id %s)", "enabled" if enabled else "disabled", rfkill_id)
+            return enabled
+        log.info("BT status: unavailable (rfkill interface not found)")
+        return False
+
+    def _enter_menu(self):
+        log.info("Entering menu")
+        if self.dvgrab:
+            self.dvgrab.stop()
+            self.dvgrab = None
+        self._state = State.MENU
+        self._menu_awaiting_release = True
+        self._menu_index = 0
+        self._menu_scroll = 0
+        self._menu_items = self._build_menu_items()
+        self.ucb.set_led(config.LED_BLINK)
+        self.oled.show_menu(self._menu_items, self._menu_index, self._menu_scroll)
+
+    def _tick_menu(self, btn: dict):
+        if self._menu_awaiting_release:
+            self.oled.show_menu(self._menu_items, self._menu_index, self._menu_scroll)
+            if btn["released"]:
+                self._menu_awaiting_release = False
+                self.ucb.reset_button()
+            return
+
+        # Select immediately when hold reaches 3s (don't wait for release)
+        if btn["is_held"] and btn["hold_duration"] >= config.MENU_SELECT_HOLD:
+            self._handle_menu_select()
+            if self._state == State.MENU:
+                self._menu_awaiting_release = True
+            return
+
+        if btn["released"]:
+            # Short press → cycle to next item
+            self._menu_index += 1
+            if self._menu_index >= len(self._menu_items):
+                self._menu_index = 0
+                self._menu_scroll = 0
+            elif self._menu_index >= self._menu_scroll + config.MENU_VISIBLE_COUNT:
+                self._menu_scroll = self._menu_index - config.MENU_VISIBLE_COUNT + 1
+            # Re-poll WiFi/BT status on each navigation press
+            self._menu_items = self._build_menu_items()
+
+        self.oled.show_menu(self._menu_items, self._menu_index, self._menu_scroll)
+
+    def _toggle_rfkill(self, rfkill_type: str, label: str):
+        """Toggle an rfkill interface and show the result.
+
+        Reads the current soft-block state and ID directly from rfkill,
+        then runs the opposite command:
+            soft blocked   → rfkill unblock <id>
+            soft unblocked → rfkill block <id>
+        """
+        info = self._rfkill_soft_blocked(rfkill_type)
+        if info is not None:
+            is_blocked, rfkill_id = info
+            cmd = "unblock" if is_blocked else "block"
+            subprocess.run(["/usr/sbin/rfkill", cmd, rfkill_id], capture_output=True, timeout=5)
+            new_state = "ON" if is_blocked else "OFF"
+            log.info("%s toggled: %s (rfkill %s %s)", label, new_state, cmd, rfkill_id)
+            self.oled.show_menu_result(f"{label}: {new_state}")
+        else:
+            log.warning("%s rfkill interface not found", label)
+            self.oled.show_menu_result(f"{label}: N/A")
+        time.sleep(config.MENU_RESULT_DISPLAY_TIME)
+        self._menu_items = self._build_menu_items()
+
+    def _handle_menu_select(self):
+        if self._menu_index == 0:
+            self._toggle_rfkill("wlan", "Wifi")
+        elif self._menu_index == 1:
+            self._toggle_rfkill("bluetooth", "BT")
+        elif self._menu_index == 2:
+            # Format – reuse existing flow
+            if not self.storage_info:
+                self.oled.show_menu_result("No Card")
+                time.sleep(config.MENU_RESULT_DISPLAY_TIME)
+            else:
+                self._format_from_menu = True
+                self._enter_format_mode()
+                return
+        elif self._menu_index == 3:
+            # Exit menu
+            self._exit_menu()
+            return
+        self.ucb.reset_button()
+
+    def _exit_menu(self):
+        log.info("Exiting menu")
+        self._camera_controlled = self.ucb.read_switch()
+        if self.storage_info:
+            self.dvgrab = DvgrabManager(self.storage_info["save_dir"])
+        self._enter_mode(self._camera_controlled)
+
+    def _return_to_menu(self):
+        """Return to menu after format completes or is cancelled."""
+        self._format_from_menu = False
+        self._menu_awaiting_release = True
+        self._menu_items = self._build_menu_items()
+        self._state = State.MENU
+        self.ucb.set_led(config.LED_BLINK)
+        self.ucb.reset_button()
+        self.oled.show_menu(self._menu_items, self._menu_index, self._menu_scroll)
 
     def _tick_no_storage(self, btn: dict):
         now = time.monotonic()
@@ -519,9 +703,9 @@ class FirewireController:
             self._enter_mode(self._camera_controlled)
 
     def _tick_no_camera(self, btn: dict):
-        # Allow format hold even without a camera
-        if self.storage_info and btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
-            self._enter_format_mode()
+        # Allow menu hold even without a camera
+        if btn["is_held"] and btn["hold_duration"] >= config.MENU_HOLD_TRIGGER:
+            self._enter_menu()
             return
 
         elapsed = time.monotonic() - self._no_camera_time

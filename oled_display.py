@@ -78,6 +78,8 @@ class OledDisplay:
             self._font_xl = _load_font(18)
             self._font_startup_title = _load_font(16, bold=True)
             self._font_startup_sub = _load_font(10, bold=True)
+            self._font_menu = _load_font(14, bold=False)
+            self._font_mode = _load_font(17, bold=True)
             log.info("OLED display detected at 0x%02X", config.OLED_I2C_ADDR)
         except Exception as exc:
             log.info("No OLED display found (0x%02X): %s – headless mode",
@@ -181,8 +183,8 @@ class OledDisplay:
         """Display the current mode prominently."""
         if not self._available:
             return
-        img, draw = self._new_canvas()
-        draw.text((0, 5), mode_name, fill=1, font=self._font_xl)
+        img, draw = self._new_canvas(inverted=True)
+        draw.text((0, 5), mode_name, fill=0, font=self._font_mode)
         self._show(img)
 
     def show_waiting(self, prev_clip_len: str = "", camera_controlled: bool = True):
@@ -193,7 +195,7 @@ class OledDisplay:
         title = "Press Rec on Cam" if camera_controlled else "Press to Rec"
         draw.text((0, 0), title, fill=1, font=self._font)
         if prev_clip_len:
-            draw.text((0, 14), f"Last: {prev_clip_len}", fill=1, font=self._font_regular)
+            draw.text((0, 20), f"Last: {prev_clip_len}", fill=1, font=self._font_regular)
         self._show(img)
 
     def show_recording(self, runtime_str: str, camera_controlled: bool = False):
@@ -213,7 +215,7 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 5), "Press to Rec", fill=1, font=self._font_xl)
+        draw.text((0, 0), "Press to Rec", fill=1, font=self._font)
         self._show(img)
 
     def show_format_prompt(self):
@@ -271,9 +273,9 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 0), "SAVING...", fill=1, font=self._font_large)
+        draw.text((0, 0), "SAVING...", fill=1, font=self._font)
         if clip_duration:
-            draw.text((0, 20), f"Clip: {clip_duration}", fill=1, font=self._font)
+            draw.text((0, 20), f"Last: {clip_duration}", fill=1, font=self._font_regular)
         self._show(img)
 
     def show_error(self, msg: str):
@@ -303,6 +305,36 @@ class OledDisplay:
             return
         img, draw = self._new_canvas()
         draw.text((0, 5), "No Camera", fill=1, font=self._font_xl)
+        self._show(img)
+
+    # Fixed menu slot positions (2 items visible on 128x32 display)
+    _MENU_TEXT_Y = (1, 17)          # text y for slot 0 and slot 1
+    _MENU_HIGHLIGHT = ((0, 0, 127, 15),   # highlight rect for slot 0: y 0–15
+                       (0, 16, 127, 31))   # highlight rect for slot 1: y 16–31
+
+    def show_menu(self, items: list, selected_idx: int, scroll_offset: int):
+        """Draw menu with 2 visible items; highlighted item uses inverted overlay."""
+        if not self._available:
+            return
+        img, draw = self._new_canvas()
+        visible = items[scroll_offset:scroll_offset + config.MENU_VISIBLE_COUNT]
+
+        for i, label in enumerate(visible):
+            actual_idx = scroll_offset + i
+            if actual_idx == selected_idx:
+                draw.rectangle(self._MENU_HIGHLIGHT[i], fill=1)
+                draw.text((2, self._MENU_TEXT_Y[i]), label, fill=0, font=self._font_menu)
+            else:
+                draw.text((2, self._MENU_TEXT_Y[i]), label, fill=1, font=self._font_menu)
+
+        self._show(img)
+
+    def show_menu_result(self, text: str):
+        """Show a toggle result (e.g. 'Wifi: ON') with inverted display."""
+        if not self._available:
+            return
+        img, draw = self._new_canvas(inverted=True)
+        draw.text((2, 8), text, fill=0, font=self._font)
         self._show(img)
 
     def show_startup(self):

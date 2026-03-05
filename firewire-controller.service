@@ -22,6 +22,7 @@ ProtectHome=yes
 ProtectSystem=strict
 ReadWritePaths=/mnt/dvmedia /var/log /run /dev
 DeviceAllow=/dev/i2c-1 rw
+DeviceAllow=/dev/rfkill rw
 DeviceAllow=block-sd rw
 DeviceAllow=char-firewire rwm
 
