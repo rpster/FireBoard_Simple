@@ -88,6 +88,7 @@ class FirewireController:
         self._menu_awaiting_release = False
         self._menu_items: list[str] = []
         self._menu_submenu: str | None = None
+        self._brightness_label = "High"
         self._wifi_rfkill_id: str | None = None
         self._bt_rfkill_id: str | None = None
         self._rfkill_cache: dict[str, tuple[bool, str, float]] = {}
@@ -560,7 +561,7 @@ class FirewireController:
         """Build menu item labels with current WiFi/BT status."""
         wifi_state = "ON" if self._is_wifi_enabled() else "OFF"
         bt_state = "ON" if self._is_bt_enabled() else "OFF"
-        return ["Brightness", f"Wifi: {wifi_state}", f"BT: {bt_state}", "Format", "Exit"]
+        return [f"Bright: {self._brightness_label}", f"Wifi: {wifi_state}", f"BT: {bt_state}", "Format", "Exit"]
 
     def _build_submenu_items(self) -> list[str]:
         """Build sub-menu item labels for the current sub-menu."""
@@ -673,6 +674,9 @@ class FirewireController:
             # Re-poll WiFi/BT status on each navigation press (main menu only)
             if not self._menu_submenu:
                 self._menu_items = self._build_menu_items()
+            elif self._menu_submenu == "brightness" and self._menu_index < 3:
+                _levels = (config.BRIGHTNESS_HIGH, config.BRIGHTNESS_MEDIUM, config.BRIGHTNESS_LOW)
+                self.oled.set_contrast(_levels[self._menu_index])
 
         self.oled.show_menu(self._menu_items, self._menu_index, self._menu_scroll)
 
@@ -709,6 +713,9 @@ class FirewireController:
             self._menu_index = 0
             self._menu_scroll = 0
             self._menu_items = self._build_submenu_items()
+            _label_to_level = {"High": config.BRIGHTNESS_HIGH, "Medium": config.BRIGHTNESS_MEDIUM, "Low": config.BRIGHTNESS_LOW}
+            self._pre_preview_contrast = _label_to_level[self._brightness_label]
+            self.oled.set_contrast(config.BRIGHTNESS_HIGH)
         elif self._menu_index == 1:
             self._toggle_rfkill("wlan", "Wifi")
         elif self._menu_index == 2:
@@ -735,8 +742,12 @@ class FirewireController:
             if self._menu_index in levels:
                 self.oled.set_contrast(levels[self._menu_index])
                 labels = {0: "High", 1: "Medium", 2: "Low"}
-                self.oled.show_menu_result(f"Bright: {labels[self._menu_index]}")
+                self._brightness_label = labels[self._menu_index]
+                self.oled.show_menu_result(f"Bright: {self._brightness_label}")
                 time.sleep(config.MENU_RESULT_DISPLAY_TIME)
+            else:
+                # "Back" – restore previous brightness
+                self.oled.set_contrast(self._pre_preview_contrast)
         # Return to main menu (handles both value selection and "Back")
         self._menu_submenu = None
         self._menu_index = 0
