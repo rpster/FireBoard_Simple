@@ -495,27 +495,21 @@ class FirewireController:
     # --- Format mode ---
     # --- Format required (non-exFAT card) ---
     def _tick_format_required(self, btn: dict):
+        # Check if card was removed (card is not mounted so check device node)
+        if self.storage_info:
+            part = self.storage_info.get("partition")
+            if not part or not os.path.exists(part):
+                log.warning("Card removed during format-required screen")
+                self.storage_info = None
+                self.oled.show_no_card()
+                self.ucb.set_led(config.LED_DOUBLE_PULSE)
+                self._state = State.NO_STORAGE
+                return
         if btn.is_held and btn.hold_duration >= config.FORMAT_REQ_HOLD:
             self._format_from_menu = False
             self._enter_format_mode()
             return
-        if btn.released:
-            self._dismiss_format_required()
-            return
         self.oled.show_format_required()
-
-    def _dismiss_format_required(self):
-        """Dismiss FORMAT_REQUIRED warning and proceed with the card."""
-        log.info("Format required warning dismissed – proceeding with card")
-        if self.storage_info:
-            if not mount_storage(self.storage_info):
-                log.warning("Could not mount storage – proceeding anyway")
-            if not self.dvgrab:
-                self.dvgrab = DvgrabManager(self.storage_info["save_dir"])
-        self.oled.show_card_detected()
-        self.ucb.set_led(config.LED_ON)
-        self._card_detected_time = time.monotonic()
-        self._state = State.CARD_DETECTED
 
     def _enter_format_mode(self):
         log.info("Entering format confirmation mode")
