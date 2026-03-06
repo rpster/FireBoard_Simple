@@ -456,6 +456,14 @@ class FirewireController:
         if self._sync_proc and self._sync_proc.poll() is not None:
             log.info("Sync complete")
             self._sync_proc = None
+            # Poll the mode switch – it may have been flipped during
+            # recording or saving (both are protected states that block
+            # the main-loop mode-switch handler).
+            current_switch = self.ucb.read_switch()
+            if current_switch != self._camera_controlled:
+                self._prev_switch = current_switch
+                self._enter_mode(current_switch)
+                return
             if self._camera_controlled:
                 self.ucb.set_led(config.LED_PULSE)
                 self.oled.show_waiting(self._prev_clip_str)
