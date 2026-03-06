@@ -244,7 +244,7 @@ class FirewireController:
             # 1. Check for mode switch change
             current_switch = self.ucb.read_switch(raw=sw_raw)
             if self._prev_switch is not None and current_switch != self._prev_switch:
-                if self._state not in (State.FORMAT_CONFIRM, State.FORMATTING, State.MENU):
+                if self._state not in (State.CAM_ON_RECORDING, State.CAM_OFF_RECORDING, State.SAVING, State.FORMAT_CONFIRM, State.FORMATTING, State.MENU):
                     self._enter_mode(current_switch)
                     self._prev_switch = current_switch
                     self._tick_sleep(tick_start)
