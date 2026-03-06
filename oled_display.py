@@ -80,6 +80,12 @@ class OledDisplay:
             self._font_startup_sub = _load_font(10, bold=True)
             self._font_menu = _load_font(14, bold=False)
             self._font_mode = _load_font(17, bold=True)
+            # Pre-allocate reusable canvases to avoid per-frame allocation
+            self._canvas = Image.new("1", (config.OLED_WIDTH, config.OLED_HEIGHT), 0)
+            self._canvas_inv = Image.new("1", (config.OLED_WIDTH, config.OLED_HEIGHT), 1)
+            self._draw_normal = ImageDraw.Draw(self._canvas)
+            self._draw_inv = ImageDraw.Draw(self._canvas_inv)
+            self._clear_rect = (0, 0, config.OLED_WIDTH - 1, config.OLED_HEIGHT - 1)
             log.info("OLED display detected at 0x%02X", config.OLED_I2C_ADDR)
         except Exception as exc:
             log.info("No OLED display found (0x%02X): %s – headless mode",
@@ -98,11 +104,12 @@ class OledDisplay:
     # Drawing helpers
     # ------------------------------------------------------------------
     def _new_canvas(self, inverted: bool = False) -> tuple:
-        """Return (Image, ImageDraw) for the display size."""
-        img = Image.new("1", (config.OLED_WIDTH, config.OLED_HEIGHT),
-                        1 if inverted else 0)
-        draw = ImageDraw.Draw(img)
-        return img, draw
+        """Return (Image, ImageDraw) for the display size, reusing pre-allocated objects."""
+        if inverted:
+            self._draw_inv.rectangle(self._clear_rect, fill=1)
+            return self._canvas_inv, self._draw_inv
+        self._draw_normal.rectangle(self._clear_rect, fill=0)
+        return self._canvas, self._draw_normal
 
     def _show(self, img: "Image.Image"):
         if self._device:

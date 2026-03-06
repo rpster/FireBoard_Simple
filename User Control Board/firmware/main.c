@@ -17,6 +17,7 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/sleep.h>
 #include <util/delay.h>
 
 /* ═══════════════════════ Configuration ════════════════════════ */
@@ -203,6 +204,13 @@ static uint8_t breathe_curve(uint16_t t, uint16_t period)
     return (uint16_t)(phase * phase) / 255;
 }
 
+/* Timer0 overflow ISR — sole purpose is to wake from SLEEP_MODE_IDLE.
+ * Fires every ~2.048 ms at 8 MHz / 64 prescaler. */
+ISR(TIMER0_OVF_vect)
+{
+    /* empty — wake only */
+}
+
 /* ═══════════════════════ Main ════════════════════════════════ */
 
 int main(void)
@@ -220,6 +228,15 @@ int main(void)
     GTCCR = 0;
     OCR1C = 255;
     OCR1A = 0;
+
+    /* Timer0: ~2 ms overflow interrupt (wake source for idle sleep).
+     * 8 MHz / 64 prescaler = 125 kHz tick, 256 counts ≈ 2.048 ms. */
+    TCCR0A = 0;
+    TCCR0B = (1 << CS01) | (1 << CS00);   /* clk/64 */
+    TIMSK  |= (1 << TOIE0);               /* enable Timer0 overflow interrupt */
+
+    set_sleep_mode(SLEEP_MODE_IDLE);
+    sleep_enable();
 
     /* I2C slave */
     twi_reset();
@@ -301,7 +318,7 @@ int main(void)
             break;
         }
 
-        _delay_ms(1);
+        sleep_cpu();
     }
 
     return 0;

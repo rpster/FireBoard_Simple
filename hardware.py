@@ -5,10 +5,18 @@ Handles I2C communication with the custom user control board.
 
 import logging
 import time
+from typing import NamedTuple
 
 import smbus2
 
 import config
+
+
+class ButtonState(NamedTuple):
+    pressed: bool
+    released: bool
+    is_held: bool
+    hold_duration: float
 
 log = logging.getLogger(__name__)
 
@@ -80,21 +88,44 @@ class UserControlBoard:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+    def poll_inputs(self) -> tuple[bool, bool]:
+        """Read button and switch in a single I2C block read.
+
+        Returns (button_pressed, switch_on).
+        The ATtiny85 firmware auto-increments the register pointer,
+        so reading 2 bytes from register 0x00 returns [button, switch].
+        """
+        for attempt in range(config.I2C_RETRIES):
+            try:
+                data = self._bus.read_i2c_block_data(self._addr, config.UCB_REG_BUTTON, 2)
+                time.sleep(config.I2C_GAP)
+                self._last_good[config.UCB_REG_BUTTON] = data[0]
+                self._last_good[config.UCB_REG_SWITCH] = data[1]
+                return (bool(data[0] & 0x01), bool(data[1] & 0x01))
+            except OSError:
+                time.sleep(config.I2C_RETRY_DELAY)
+        log.warning("I2C block read failed after %d attempts", config.I2C_RETRIES)
+        return (
+            bool(self._last_good.get(config.UCB_REG_BUTTON, 0) & 0x01),
+            bool(self._last_good.get(config.UCB_REG_SWITCH, 0) & 0x01),
+        )
+
     def read_button_raw(self) -> bool:
         """Return True if the button is currently physically pressed."""
         val = self._read_reg(config.UCB_REG_BUTTON)
         return bool(val & 0x01)
 
-    def poll_button(self) -> dict:
+    def poll_button(self, raw: bool | None = None) -> ButtonState:
         """
-        Call every tick.  Returns a dict:
+        Call every tick.  Returns a ButtonState:
             pressed        – True on the tick the button transitions to pressed
             released       – True on the tick the button transitions to released
             is_held        – True while button is held down
             hold_duration  – seconds the button has been held (0 if not held)
         """
         now = time.monotonic()
-        raw = self.read_button_raw()
+        if raw is None:
+            raw = self.read_button_raw()
 
         # Debounce
         if raw != self._last_button_raw:
@@ -120,17 +151,18 @@ class UserControlBoard:
         if self._debounced_state and self._button_press_start is not None:
             hold_duration = now - self._button_press_start
 
-        return {
-            "pressed": pressed,
-            "released": released,
-            "is_held": self._debounced_state,
-            "hold_duration": hold_duration,
-        }
+        return ButtonState(
+            pressed=pressed,
+            released=released,
+            is_held=self._debounced_state,
+            hold_duration=hold_duration,
+        )
 
-    def read_switch(self) -> bool:
+    def read_switch(self, raw: bool | None = None) -> bool:
         """Return debounced switch state. True = Camera Controlled ON."""
         now = time.monotonic()
-        raw = bool(self._read_reg(config.UCB_REG_SWITCH) & 0x01)
+        if raw is None:
+            raw = bool(self._read_reg(config.UCB_REG_SWITCH) & 0x01)
 
         if raw != self._last_switch_raw:
             self._switch_debounce_time = now

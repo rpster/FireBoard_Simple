@@ -90,6 +90,11 @@ class FirewireController:
         self._menu_submenu: str | None = None
         self._wifi_rfkill_id: str | None = None
         self._bt_rfkill_id: str | None = None
+        self._rfkill_cache: dict[str, tuple[bool, str, float]] = {}
+
+        # Duration formatting cache
+        self._cached_duration_str = "00:00:00"
+        self._cached_duration_sec = -1
 
         # Signal handlers
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -196,6 +201,7 @@ class FirewireController:
             self.dvgrab.stop()
 
         self._prev_clip_str = ""
+        self._cached_duration_sec = -1
 
         if not self.dvgrab:
             log.warning("No camera available – staying in NO_CAMERA state")
@@ -232,8 +238,11 @@ class FirewireController:
         while self._running:
             tick_start = time.monotonic()
 
+            # Read both inputs in a single I2C transaction
+            btn_raw, sw_raw = self.ucb.poll_inputs()
+
             # 1. Check for mode switch change
-            current_switch = self.ucb.read_switch()
+            current_switch = self.ucb.read_switch(raw=sw_raw)
             if self._prev_switch is not None and current_switch != self._prev_switch:
                 if self._state not in (State.FORMAT_CONFIRM, State.FORMATTING, State.MENU):
                     self._enter_mode(current_switch)
@@ -245,7 +254,7 @@ class FirewireController:
             # 2. Poll button (suppress during I2C settle period)
             if not self._input_settled():
                 self.ucb.reset_button()
-            btn = self.ucb.poll_button()
+            btn = self.ucb.poll_button(raw=btn_raw)
 
             # 3. Dispatch based on state
             handler = self._dispatch.get(self._state)
@@ -319,13 +328,21 @@ class FirewireController:
         """True once enough time has passed after a mode switch for I2C to settle."""
         return (time.monotonic() - self._mode_entered_time) >= config.INPUT_SETTLE_TIME
 
+    def _format_runtime(self, runtime: float) -> str:
+        """Return formatted duration string, cached by integer second."""
+        sec = int(runtime)
+        if sec != self._cached_duration_sec:
+            self._cached_duration_sec = sec
+            self._cached_duration_str = DvgrabManager.format_duration(runtime)
+        return self._cached_duration_str
+
     # ------------------------------------------------------------------
     # State handlers
     # ------------------------------------------------------------------
 
     # --- Camera Controlled ON ---
     def _tick_cam_on_waiting(self, btn: dict):
-        if btn["is_held"] and btn["hold_duration"] >= config.MENU_HOLD_TRIGGER:
+        if btn.is_held and btn.hold_duration >= config.MENU_HOLD_TRIGGER:
             self._enter_menu()
             return
         events = self.dvgrab.poll_output() if self.dvgrab else []
@@ -347,20 +364,16 @@ class FirewireController:
 
         # Update runtime display
         rt = self.dvgrab.get_recording_runtime()
-        self.oled.show_recording(DvgrabManager.format_duration(rt), camera_controlled=True)
+        self.oled.show_recording(self._format_runtime(rt), camera_controlled=True)
 
     # --- Camera Controlled OFF ---
     def _tick_cam_off_ready(self, btn: dict):
-        if btn["is_held"] and btn["hold_duration"] >= config.MENU_HOLD_TRIGGER:
-            self._enter_menu()
-            return
-
         # Drain dvgrab output
         if self.dvgrab:
             self.dvgrab.poll_output()
 
-        if btn["released"] and self._input_settled():
-            # Short press (< 5s hold) → start capture
+        if btn.pressed and self._input_settled():
+            # Start capture immediately on rising edge
             self.dvgrab.send_capture_start()
             self.dvgrab.is_recording = True
             self.ucb.set_led(config.LED_ON)
@@ -374,7 +387,15 @@ class FirewireController:
         if self.dvgrab:
             self.dvgrab.poll_output()
 
-        if btn["pressed"]:
+        # Menu hold: cancel the just-started capture and enter menu
+        if btn.is_held and btn.hold_duration >= config.MENU_HOLD_TRIGGER:
+            self.dvgrab.send_capture_stop()
+            self.dvgrab.is_recording = False
+            log.info("Recording cancelled – entering menu")
+            self._enter_menu()
+            return
+
+        if btn.pressed:
             # Stop capture
             self.dvgrab.send_capture_stop()
             dur = self.dvgrab.get_recording_runtime()
@@ -389,7 +410,7 @@ class FirewireController:
 
         # Update runtime display
         rt = self.dvgrab.get_recording_runtime()
-        self.oled.show_recording(DvgrabManager.format_duration(rt))
+        self.oled.show_recording(self._format_runtime(rt))
 
     # --- Saving (sync flush) ---
     def _enter_saving(self):
@@ -457,19 +478,19 @@ class FirewireController:
         if self._format_awaiting_release:
             # Phase 1: wait for user to release the initial hold
             self.oled.show_format_prompt()  # Update scroll animation
-            if btn["released"]:
+            if btn.released:
                 self._format_awaiting_release = False
                 self.ucb.reset_button()
             return
 
         # Phase 2: waiting for new input
-        if btn["is_held"]:
-            if btn["hold_duration"] >= config.FORMAT_CONFIRM_HOLD:
+        if btn.is_held:
+            if btn.hold_duration >= config.FORMAT_CONFIRM_HOLD:
                 self._do_format()
                 return
-            remaining = int(config.FORMAT_CONFIRM_HOLD - btn["hold_duration"]) + 1
+            remaining = int(config.FORMAT_CONFIRM_HOLD - btn.hold_duration) + 1
             self.oled.show_format_countdown(remaining)
-        elif btn["released"]:
+        elif btn.released:
             self._cancel_format()
         else:
             self.oled.show_format_prompt()  # Update scroll animation
@@ -561,26 +582,42 @@ class FirewireController:
             log.warning("rfkill query failed for %s: %s", rfkill_type, exc)
         return None
 
+    _RFKILL_CACHE_TTL = 10.0  # seconds
+
+    def _rfkill_soft_blocked_cached(self, rfkill_type: str) -> tuple[bool, str] | None:
+        """Return cached rfkill state, refreshing if stale."""
+        now = time.monotonic()
+        cached = self._rfkill_cache.get(rfkill_type)
+        if cached is not None:
+            is_blocked, rfkill_id, ts = cached
+            if (now - ts) < self._RFKILL_CACHE_TTL:
+                return (is_blocked, rfkill_id)
+        result = self._rfkill_soft_blocked(rfkill_type)
+        if result is not None:
+            is_blocked, rfkill_id = result
+            self._rfkill_cache[rfkill_type] = (is_blocked, rfkill_id, now)
+        return result
+
     def _is_wifi_enabled(self) -> bool:
-        info = self._rfkill_soft_blocked("wlan")
+        info = self._rfkill_soft_blocked_cached("wlan")
         if info is not None:
             blocked, rfkill_id = info
             self._wifi_rfkill_id = rfkill_id
             enabled = not blocked
-            log.info("WiFi status: %s (rfkill id %s)", "enabled" if enabled else "disabled", rfkill_id)
+            log.debug("WiFi status: %s (rfkill id %s)", "enabled" if enabled else "disabled", rfkill_id)
             return enabled
-        log.info("WiFi status: unavailable (rfkill interface not found)")
+        log.debug("WiFi status: unavailable (rfkill interface not found)")
         return False
 
     def _is_bt_enabled(self) -> bool:
-        info = self._rfkill_soft_blocked("bluetooth")
+        info = self._rfkill_soft_blocked_cached("bluetooth")
         if info is not None:
             blocked, rfkill_id = info
             self._bt_rfkill_id = rfkill_id
             enabled = not blocked
-            log.info("BT status: %s (rfkill id %s)", "enabled" if enabled else "disabled", rfkill_id)
+            log.debug("BT status: %s (rfkill id %s)", "enabled" if enabled else "disabled", rfkill_id)
             return enabled
-        log.info("BT status: unavailable (rfkill interface not found)")
+        log.debug("BT status: unavailable (rfkill interface not found)")
         return False
 
     def _enter_menu(self):
@@ -599,13 +636,13 @@ class FirewireController:
     def _tick_menu(self, btn: dict):
         if self._menu_awaiting_release:
             self.oled.show_menu(self._menu_items, self._menu_index, self._menu_scroll)
-            if btn["released"]:
+            if btn.released:
                 self._menu_awaiting_release = False
                 self.ucb.reset_button()
             return
 
         # Select immediately when hold reaches threshold (don't wait for release)
-        if btn["is_held"] and btn["hold_duration"] >= config.MENU_SELECT_HOLD:
+        if btn.is_held and btn.hold_duration >= config.MENU_SELECT_HOLD:
             self._handle_menu_select()
             if self._state == State.MENU:
                 # If button was released during the action (e.g. sleep for
@@ -617,7 +654,7 @@ class FirewireController:
                     self._menu_awaiting_release = True
             return
 
-        if btn["released"]:
+        if btn.released:
             # Short press → cycle to next item
             self._menu_index += 1
             if self._menu_index >= len(self._menu_items):
@@ -644,6 +681,7 @@ class FirewireController:
             is_blocked, rfkill_id = info
             cmd = "unblock" if is_blocked else "block"
             subprocess.run(["/usr/sbin/rfkill", cmd, rfkill_id], capture_output=True, timeout=5)
+            self._rfkill_cache.pop(rfkill_type, None)
             new_state = "ON" if is_blocked else "OFF"
             log.info("%s toggled: %s (rfkill %s %s)", label, new_state, cmd, rfkill_id)
             self.oled.show_menu_result(f"{label}: {new_state}")
@@ -744,7 +782,7 @@ class FirewireController:
 
     def _tick_no_camera(self, btn: dict):
         # Allow menu hold even without a camera
-        if btn["is_held"] and btn["hold_duration"] >= config.MENU_HOLD_TRIGGER:
+        if btn.is_held and btn.hold_duration >= config.MENU_HOLD_TRIGGER:
             self._enter_menu()
             return
 

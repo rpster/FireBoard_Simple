@@ -194,6 +194,9 @@ class DvgrabManager:
             try:
                 data = os.read(self._master_fd, 4096).decode("utf-8", errors="replace")
                 self._output_buffer += data
+                # Safety cap: discard oldest data if buffer grows without newlines
+                if len(self._output_buffer) > 8192 and "\n" not in self._output_buffer:
+                    self._output_buffer = self._output_buffer[-4096:]
             except OSError:
                 return events
 

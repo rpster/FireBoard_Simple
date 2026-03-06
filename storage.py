@@ -7,6 +7,7 @@ import logging
 import os
 import pathlib
 import subprocess
+import time
 
 import config
 
@@ -144,7 +145,6 @@ def format_storage(info: dict) -> bool:
 
     # Re-read partition table
     _run(["partprobe", dev])
-    import time
     time.sleep(2)
 
     # Re-detect partition
