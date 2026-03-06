@@ -284,8 +284,8 @@ class FirewireController:
             if (now - self._last_storage_check) >= config.STORAGE_CHECK_INTERVAL:
                 self._last_storage_check = now
                 if self.storage_info and self._state not in (
-                    State.NO_STORAGE, State.FORMATTING, State.FORMAT_REQUIRED,
-                    State.STARTUP, State.MENU,
+                    State.NO_STORAGE, State.FORMAT_REQUIRED, State.FORMAT_CONFIRM,
+                    State.FORMATTING, State.STARTUP, State.MENU,
                 ):
                     if not is_storage_present(self.storage_info):
                         log.warning("External drive removed")
