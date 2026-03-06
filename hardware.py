@@ -28,11 +28,8 @@ class UserControlBoard:
         self._bus = bus or smbus2.SMBus(config.I2C_BUS)
         self._addr = config.UCB_I2C_ADDR
         self._last_good: dict[int, int] = {}  # reg -> last known good value
-        self._last_button_raw = False
         self._button_press_start: float | None = None
-        self._last_debounce_time: float = 0.0
-        self._debounced_state = False
-        self._prev_debounced_state = False
+        self._prev_button_state = False
         self._last_switch_raw = False
         self._switch_debounce_time: float = 0.0
         self._debounced_switch = False
@@ -127,20 +124,9 @@ class UserControlBoard:
         if raw is None:
             raw = self.read_button_raw()
 
-        # Debounce
-        if raw != self._last_button_raw:
-            self._last_debounce_time = now
-        self._last_button_raw = raw
-
-        # Snapshot previous state BEFORE any update (every tick)
-        self._prev_debounced_state = self._debounced_state
-
-        # Only accept a new value once the signal is stable
-        if (now - self._last_debounce_time) >= config.DEBOUNCE_TIME:
-            self._debounced_state = raw
-
-        pressed = self._debounced_state and not self._prev_debounced_state
-        released = not self._debounced_state and self._prev_debounced_state
+        pressed = raw and not self._prev_button_state
+        released = not raw and self._prev_button_state
+        self._prev_button_state = raw
 
         if pressed:
             self._button_press_start = now
@@ -148,13 +134,13 @@ class UserControlBoard:
             self._button_press_start = None
 
         hold_duration = 0.0
-        if self._debounced_state and self._button_press_start is not None:
+        if raw and self._button_press_start is not None:
             hold_duration = now - self._button_press_start
 
         return ButtonState(
             pressed=pressed,
             released=released,
-            is_held=self._debounced_state,
+            is_held=raw,
             hold_duration=hold_duration,
         )
 
@@ -176,17 +162,11 @@ class UserControlBoard:
     def reset_button(self):
         """Reset button state after mode transitions.
 
-        Sets debounced state to True so that a noisy line reading
-        as 'pressed' does NOT generate a False→True edge.  A real
-        press will only register after the line is first seen as
-        released (True→False) then pressed again (False→True).
+        Seeds previous state from hardware so a button that is
+        currently pressed does NOT generate a false press edge.
         """
-        now = time.monotonic()
         raw = self.read_button_raw()
-        self._last_button_raw = raw
-        self._last_debounce_time = now
-        self._debounced_state = raw
-        self._prev_debounced_state = raw
+        self._prev_button_state = raw
         self._button_press_start = None
 
     def set_led(self, mode: int):

@@ -66,7 +66,6 @@ CAMERA_RETRY_DELAY = 5.0      # Wait before retrying after no camera
 STORAGE_CHECK_INTERVAL = 2.0  # Seconds between external drive presence checks
 CARD_CONFIRM_DELAY = 3.0      # Seconds to show "Card OK!" confirmation
 FW_DEVICE_CHECK_INTERVAL = 1.0  # Seconds between FireWire device presence checks
-DEBOUNCE_TIME = 0.08          # Button debounce
 STOP_REC_SETTLE = 1.0         # Seconds to settle after saving screen displays
 SWITCH_DEBOUNCE_TIME = 0.3    # Slide switch debounce
 INPUT_SETTLE_TIME = 1.0       # Ignore button after mode switch (I2C settles)
