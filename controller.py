@@ -208,7 +208,7 @@ class FirewireController:
         if not self._running:
             return
         self._camera_controlled = camera_controlled
-        mode_name = "Cam Ctrl ON" if camera_controlled else "Cam Ctrl OFF"
+        mode_name = "CAM CONTROL" if camera_controlled else "MANUAL"
         log.info("Entering mode: %s", mode_name)
         self.oled.show_mode(mode_name)
         time.sleep(3)
