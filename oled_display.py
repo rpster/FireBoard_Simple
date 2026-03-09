@@ -24,8 +24,8 @@ except ImportError:
 def _load_font(size: int = 10, bold: bool = False):
     """Try to load a small TTF; fall back to default bitmap font."""
     try:
-        name = "DejaVuSansMono-Bold.ttf" if bold else "DejaVuSansMono.ttf"
-        return ImageFont.truetype(f"/usr/share/fonts/truetype/dejavu/{name}", size)
+        name = "OpenSans-Bold.ttf" if bold else "OpenSans-Medium.ttf"
+        return ImageFont.truetype(f"/usr/share/fonts/truetype/open_sans/{name}", size)
     except (OSError, IOError):
         return ImageFont.load_default()
 
@@ -196,7 +196,7 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas(inverted=True)
-        draw.text((0, 5), mode_name, fill=0, font=self._font_mode)
+        draw.text((0, 2), mode_name, fill=0, font=self._font_mode)
         self._show(img)
 
     def show_waiting(self, prev_clip_len: str = "", camera_controlled: bool = True):
@@ -205,9 +205,9 @@ class OledDisplay:
             return
         img, draw = self._new_canvas()
         title = "Press Rec on Cam" if camera_controlled else "Press to Rec"
-        draw.text((0, 0), title, fill=1, font=self._font)
+        draw.text((0, 0), title, fill=1, font=self._font_large)
         if prev_clip_len:
-            draw.text((0, 20), f"Last: {prev_clip_len}", fill=1, font=self._font_regular)
+            draw.text((0, 18), f"Last: {prev_clip_len}", fill=1, font=self._font_regular)
         self._show(img)
 
     def show_recording(self, runtime_str: str, camera_controlled: bool = False):
@@ -217,17 +217,17 @@ class OledDisplay:
         img, draw = self._new_canvas()
         # Blink record dot at 500ms interval
         if int(time.monotonic() / 0.5) % 2 == 0:
-            draw.ellipse((0, 2, 8, 10), fill=1)
+            draw.ellipse((0, 4, 8, 12), fill=1)
         label = "REC | CAM CTRL" if camera_controlled else "REC | MANUAL"
-        draw.text((12, 0), label, fill=1, font=self._font_large)
-        draw.text((0, 16), runtime_str, fill=1, font=self._font_large_regular)
+        draw.text((12, -2), label, fill=1, font=self._font_large)
+        draw.text((0, 14), runtime_str, fill=1, font=self._font_large_regular)
         self._show(img)
 
     def show_ready(self):
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 0), "Press to Rec", fill=1, font=self._font)
+        draw.text((0, 0), "Press to Rec", fill=1, font=self._font_large)
         self._show(img)
 
     def show_format_required(self):
@@ -293,10 +293,10 @@ class OledDisplay:
         """Saving / flushing to disk warning screen."""
         if not self._available:
             return
-        img, draw = self._new_canvas()
-        draw.text((0, 0), "SAVING...", fill=1, font=self._font)
+        img, draw = self._new_canvas(inverted=True)
+        draw.text((0, 0), "SAVING...", fill=0, font=self._font_large)
         if clip_duration:
-            draw.text((0, 20), f"Last: {clip_duration}", fill=1, font=self._font_regular)
+            draw.text((0, 18), f"Last: {clip_duration}", fill=0, font=self._font_regular)
         self._show(img)
 
     def show_error(self, msg: str):
@@ -310,8 +310,8 @@ class OledDisplay:
     def show_no_card(self):
         if not self._available:
             return
-        img, draw = self._new_canvas()
-        draw.text((0, 5), "No Card", fill=1, font=self._font_xl)
+        img, draw = self._new_canvas(inverted=True)
+        draw.text((0, 5), "No Card", fill=0, font=self._font_xl)
         self._show(img)
 
     def show_card_detected(self):
@@ -329,7 +329,7 @@ class OledDisplay:
         self._show(img)
 
     # Fixed menu slot positions (2 items visible on 128x32 display)
-    _MENU_TEXT_Y = (1, 17)          # text y for slot 0 and slot 1
+    _MENU_TEXT_Y = (-2, 15)          # text y for slot 0 and slot 1
     _MENU_HIGHLIGHT = ((0, 0, 127, 15),   # highlight rect for slot 0: y 0–15
                        (0, 16, 127, 31))   # highlight rect for slot 1: y 16–31
 
